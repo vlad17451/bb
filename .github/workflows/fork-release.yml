@@ -1,0 +1,94 @@
+name: Fork release
+
+on:
+  push:
+    branches:
+      - fork
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and release bb-app
+    if: ${{ github.repository != 'get-bb/bb' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Read version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p 'require("./packages/bb-app/package.json").version')"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-fork\.[0-9]+$ ]]; then
+            echo "::error::bb-app version ${version} is not <upstream version>-fork.<n>."
+            exit 1
+          fi
+          tag="v${version}"
+          released=false
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            released=true
+            echo "::notice::Release ${tag} already exists; building without releasing. Bump the version to release."
+          fi
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "released=${released}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check version lockstep
+        run: node .github/workflows/check-version-lockstep.mjs
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build, typecheck, and test
+        run: pnpm exec turbo run build typecheck test --filter=bb-app --filter=@bb/config --filter=@bb/server --filter=@bb/shared-ui --filter=@bb/app --output-logs=new-only
+
+      - name: Smoke bb-app tarball
+        run: pnpm exec turbo run smoke:tarball --filter=bb-app --force --output-logs=new-only
+
+      - name: Pack bb-app
+        id: pack
+        working-directory: packages/bb-app
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack --pack-destination "$RUNNER_TEMP/pack"
+          echo "tarball=$RUNNER_TEMP/pack/bb-app-${{ steps.version.outputs.version }}.tgz" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: ${{ steps.version.outputs.released != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          gh release create "$TAG" "$TARBALL" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "bb-app ${VERSION}" \
+            --notes "bb-app ${VERSION} built from ${GITHUB_SHA}. Install with \`npm install --global ./bb-app-${VERSION}.tgz\` and start with \`--no-in-app-updates\`."

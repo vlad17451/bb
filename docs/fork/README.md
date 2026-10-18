@@ -10,7 +10,11 @@ This is a personal fork of [get-bb/bb](https://github.com/get-bb/bb). It exists 
 
 ## Releases
 
-GitHub Actions builds `packages/bb-app` on push to `fork` and attaches the packed tarball to a GitHub Release. Upstream's own workflows (nightly npm publish, desktop builds) are disabled here.
+`.github/workflows/fork-release.yml` runs on every push to `fork` and on manual dispatch. It installs with the frozen lockfile, builds, typechecks and tests `bb-app` and the packages the fork changes, runs upstream's tarball smoke test, packs `packages/bb-app` and creates the GitHub Release `v<version>` with `bb-app-<version>.tgz` as its asset. When that release already exists, it builds without releasing.
+
+To release, bump both locked versions (`packages/bb-app` and `apps/desktop`, see `.github/workflows/check-version-lockstep.mjs`) to the next `<upstream version>-fork.<n>` and push.
+
+Upstream's own workflows (nightly npm publish, desktop builds, deploys, CI) do not run here. `fork/github-setup.sh` turns Actions on, makes `fork` the default branch (manual dispatch needs the workflow on the default branch) and disables every workflow except `fork-release.yml`. A rebase that brings a new upstream workflow needs another run of it.
 
 ## What deployments expect from a build
 
@@ -25,7 +29,20 @@ See [decisions.md](decisions.md).
 
 ## Development
 
-Dependencies, dev servers, builds and tests run in the fork's dev container, not on the host.
+Dependencies, dev servers, builds and tests run in the fork's dev container, not on the host, so that dependency install scripts never see the developer's home. `fork/dev.sh <command>` builds the image from `fork/dev/` (Node 24, pnpm 9.15.0 through corepack) and runs the command with only the repository mounted at `/repo`:
+
+```sh
+fork/dev.sh pnpm install --frozen-lockfile
+fork/dev.sh pnpm build
+fork/dev.sh pnpm exec turbo run typecheck test --filter=@bb/shared-ui --filter=@bb/app
+fork/dev.sh --serve pnpm dev
+fork/dev.sh
+```
+
+- The pnpm store lives in the named volume `bb-fork-pnpm-store`.
+- The container runs as `0:0`. Under rootless podman that is the developer's own UID on the host, so files in the repository keep their owner. `--userns keep-id` fails on the owner's host with `crun: write to uid_map`.
+- Before the command starts, the entrypoint adds an nftables egress filter in the container's network namespace: the internet and the DNS servers from `/etc/resolv.conf` are open; private networks, link-local (which includes podman's `host.containers.internal`), CGNAT and the tailnet (`100.64.0.0/10`), multicast and the IPv6 equivalents are rejected. It then drops `CAP_NET_ADMIN`, so nothing in the container can change the filter. Without it, a dependency could reach services on the host or the tailnet, such as an unauthenticated BB published with Tailscale Serve.
+- `--serve` publishes the dev app and server ports on `127.0.0.1` only and makes them listen on `0.0.0.0` inside the container. The ports follow upstream's per-checkout scheme for the repository root `/repo` (`resolvePorts` in `packages/config/src/runtime.ts`); the script prints the app URL.
 
 ## Planned
 
