@@ -23,3 +23,9 @@ BB's updater checks the npm registry and, when someone clicks Update, installs t
 - Two tests that stubbed the literal query now use `POINTER_COARSE_QUERY`.
 
 Related upstream request: [get-bb/bb#5446](https://github.com/get-bb/bb/issues/5446) asks for an opt-in "Enter inserts newline" setting and does not cover this case.
+
+## Enter answers a question with a typed answer
+
+**Problem.** In a question from the agent, the "Other" field inserts a newline on Enter and submits only on Ctrl+Enter or Cmd+Enter. The composer sends on Enter, so a typed answer ends up with a stray newline instead of being submitted.
+
+**Change.** `handleFreeTextKeyDown` in `packages/shared-ui/src/components/ui/question-form.tsx` follows the composer: on a device that is not coarse (`usePointerCoarse()`), Enter advances to the next question or submits, and Shift+Enter inserts a newline. Ctrl+Enter and Cmd+Enter still submit everywhere. Phones and tablets without a fine pointer keep Enter for newlines. The test `leaves free-text Enter available for newlines` is replaced by one test for each behaviour.

@@ -251,10 +251,13 @@ function QuestionInputBlock({
   const handleFreeTextKeyDown = (
     event: KeyboardEvent<HTMLTextAreaElement>,
   ): void => {
+    const isModifiedEnterSubmit = event.metaKey || event.ctrlKey;
+    const isPlainEnterSubmit =
+      !isPointerCoarse && !event.shiftKey && !event.altKey;
     if (
       event.nativeEvent.isComposing ||
       event.key !== "Enter" ||
-      (!event.metaKey && !event.ctrlKey)
+      (!isModifiedEnterSubmit && !isPlainEnterSubmit)
     ) {
       return;
     }

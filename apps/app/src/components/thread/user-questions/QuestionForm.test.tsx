@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { QuestionForm } from "@bb/shared-ui/question-form";
 import type {
   Question,
@@ -236,12 +237,32 @@ describe("answering a single-select question", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("leaves free-text Enter available for newlines", () => {
+  it("submits free text on Enter and leaves Shift+Enter for newlines", () => {
     const submit = vi.fn(async () => undefined);
     const slot = render(singleSelect, { submit });
     fireEvent.keyDown(document.body, { key: "3" });
     const textarea = slot.getByLabelText("Database answer");
     expect(document.activeElement).toBe(textarea);
+    fireEvent.change(textarea, { target: { value: "Custom" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves free-text Enter available for newlines on a coarse pointer", () => {
+    const matchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn((query: string) => ({
+        ...matchMedia(query),
+        matches: query === POINTER_COARSE_QUERY,
+      })),
+    });
+    const submit = vi.fn(async () => undefined);
+    const slot = render(singleSelect, { submit });
+    fireEvent.click(getButtonByText(slot, "Other…"));
+    const textarea = slot.getByLabelText("Database answer");
     fireEvent.change(textarea, { target: { value: "Custom" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(submit).not.toHaveBeenCalled();
