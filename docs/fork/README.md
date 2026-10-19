@@ -10,7 +10,7 @@ This is a personal fork of [get-bb/bb](https://github.com/get-bb/bb). It exists 
 
 ## Releases
 
-`.github/workflows/fork-release.yml` runs on every push to `fork` and on manual dispatch. It installs with the frozen lockfile, builds, typechecks and tests `bb-app` and the packages the fork changes, runs upstream's tarball smoke test, packs `packages/bb-app` and creates the GitHub Release `v<version>` with `bb-app-<version>.tgz` as its asset. When that release already exists, it builds without releasing.
+`.github/workflows/fork-release.yml` runs on every push to `fork` and on manual dispatch. It lints the scripts in `fork/` (shellcheck) and itself (actionlint), installs with the frozen lockfile, builds, typechecks and tests `bb-app` and the packages the fork changes, runs upstream's tarball smoke test, packs `packages/bb-app` and creates the GitHub Release `v<version>` with `bb-app-<version>.tgz` as its asset. When that release already exists, it builds without releasing.
 
 To release, bump both locked versions (`packages/bb-app` and `apps/desktop`, see `.github/workflows/check-version-lockstep.mjs`) to the next `<upstream version>-fork.<n>` and push.
 
