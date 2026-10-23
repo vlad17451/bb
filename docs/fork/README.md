@@ -14,6 +14,8 @@ This is a personal fork of [get-bb/bb](https://github.com/get-bb/bb). It exists 
 
 To release, bump both locked versions (`packages/bb-app` and `apps/desktop`, see `.github/workflows/check-version-lockstep.mjs`) to the next `<upstream version>-fork.<n>` and push.
 
+`fork/release.sh` does the same cycle from the owner's machine in minutes instead of the workflow's cold-runner build: it bumps the version when the current one is already released, builds and smoke-tests in the dev container, pushes only the tag `v<version>`, creates the GitHub Release with the tarball, then pushes `fork` (the workflow sees the release and builds without releasing), sets `BB_VERSION` in `bb-harness/.env` and runs `setup.sh`. It confirms before the bump commit, the publish, the push and `setup.sh`; `--yes` skips the confirmations.
+
 Upstream's own workflows (nightly npm publish, desktop builds, deploys, CI) do not run here. `fork/github-setup.sh` turns Actions on, makes `fork` the default branch (manual dispatch needs the workflow on the default branch) and disables every workflow except `fork-release.yml`. A rebase that brings a new upstream workflow needs another run of it.
 
 ## What deployments expect from a build
