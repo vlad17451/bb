@@ -47,6 +47,10 @@ fork/dev.sh
 - Before the command starts, the entrypoint adds an nftables egress filter in the container's network namespace: the internet and the DNS servers from `/etc/resolv.conf` are open; private networks, link-local (which includes podman's `host.containers.internal`), CGNAT and the tailnet (`100.64.0.0/10`), multicast and the IPv6 equivalents are rejected. It then drops `CAP_NET_ADMIN`, so nothing in the container can change the filter. Without it, a dependency could reach services on the host or the tailnet, such as an unauthenticated BB published with Tailscale Serve.
 - `--serve` publishes the dev app and server ports on `127.0.0.1` only and makes them listen on `0.0.0.0` inside the container. The ports follow upstream's per-checkout scheme for the repository root `/repo` (`resolvePorts` in `packages/config/src/runtime.ts`); the script prints the app URL.
 
+### Testing a provider bridge
+
+`plugins/provider-agy/src/bridge/bridge.test.ts` is the template for testing a bridge through its JSON-RPC surface: `experimental_createBridgeJsonRpcTestHarness(handleLine)` from `@get-bb/plugin-sdk/provider-bridge/testing` sends requests and captures the bridge's output, a shell script stands in for the provider CLI (agy reads `BB_AGY_EXECUTABLE`), and `turn/start` needs the `providerThreadId` that `thread/start` returned plus full execution `options`. Run it with `fork/dev.sh sh -c "cd plugins/provider-agy && pnpm exec vitest run"`.
+
 ## Planned
 
 A daily job that rebases `fork` onto the `gitHead` of the newest npm release and builds it, opening an issue when the rebase conflicts.
