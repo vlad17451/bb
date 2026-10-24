@@ -980,6 +980,13 @@ export function BbAppUpdateRows({
   const desktopHostedServer =
     systemVersion.installKind === "desktop" ||
     (appUpdate !== undefined && isDesktopOwnedServer(appUpdate));
+  const forkBaseVersion = /^(\d+\.\d+\.\d+)-fork\.\d+$/.exec(
+    systemVersion.currentVersion,
+  )?.[1];
+  const isNpmAheadOfForkBase =
+    forkBaseVersion !== undefined &&
+    systemVersion.latestVersion !== null &&
+    systemVersion.latestVersion !== forkBaseVersion;
   const name = (
     <RowName
       name={rowName}
@@ -987,6 +994,10 @@ export function BbAppUpdateRows({
         systemVersion.updateAvailable && !desktopHostedServer ? (
           <span className="hidden truncate font-mono text-2xs text-muted-foreground sm:inline">
             {systemVersion.upgradeCommand}
+          </span>
+        ) : isNpmAheadOfForkBase ? (
+          <span className="truncate text-2xs text-muted-foreground">
+            {`upstream ${forkBaseVersion} · npm ${systemVersion.latestVersion}`}
           </span>
         ) : undefined
       }

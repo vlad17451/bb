@@ -1620,6 +1620,64 @@ The canonical release summary.
     });
   });
 
+  it("shows a fork build the newer npm release beside its upstream base without offering it", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        systemVersion: {
+          currentVersion: "0.46.1-fork.6",
+          latestVersion: "0.46.2",
+          currentCommit: null,
+          installKind: "npm",
+          source: "npm",
+          updateAvailable: false,
+          isDevelopment: false,
+          upgradeCommand: "npx bb-app@latest",
+        },
+      }),
+    );
+
+    renderSection();
+    expect(screen.getByText("upstream 0.46.1 · npm 0.46.2")).toBeDefined();
+    expect(screen.queryByText("npx bb-app@latest")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Copy the upgrade command/ }),
+    ).toBeNull();
+  });
+
+  it("keeps a fork build quiet when npm latest is its upstream base", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        systemVersion: {
+          currentVersion: "0.46.1-fork.6",
+          latestVersion: "0.46.1",
+          currentCommit: null,
+          installKind: "npm",
+          source: "npm",
+          updateAvailable: false,
+          isDevelopment: false,
+          upgradeCommand: "npx bb-app@latest",
+        },
+      }),
+    );
+
+    renderSection();
+    expect(screen.getByText("0.46.1-fork.6")).toBeDefined();
+    expect(screen.queryByText(/^upstream /)).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Copy the upgrade command/ }),
+    ).toBeNull();
+  });
+
   it("checks for desktop updates through the desktop bridge", async () => {
     const desktopInfo: BbDesktopInfo = {
       downloadState: "downloaded",

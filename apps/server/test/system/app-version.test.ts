@@ -174,6 +174,32 @@ describe("createAppVersionService", () => {
     expect(response.updateAvailable).toBe(false);
   });
 
+  it("does not offer npm latest to a fork build of the same base version", async () => {
+    const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
+      config: { appVersion: "0.46.1-fork.6", isDevelopment: false },
+      fetchImpl: createStubFetch([{ body: { version: "0.46.1" } }], []),
+      logger: testLogger,
+    });
+    const response = await service.getSystemVersion();
+    expect(response.latestVersion).toBe("0.46.1");
+    expect(response.updateAvailable).toBe(false);
+  });
+
+  it("reports a newer npm release to a fork build without offering it as an update", async () => {
+    const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
+      config: { appVersion: "0.46.1-fork.6", isDevelopment: false },
+      fetchImpl: createStubFetch([{ body: { version: "0.46.2" } }], []),
+      logger: testLogger,
+    });
+    const response = await service.getSystemVersion();
+    expect(response.latestVersion).toBe("0.46.2");
+    expect(response.updateAvailable).toBe(false);
+  });
+
   it("reports updateAvailable=false when local is ahead of npm latest", async () => {
     const service = createAppVersionService({
       sourceCommit: null,

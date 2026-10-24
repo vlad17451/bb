@@ -203,6 +203,11 @@ export function createAppVersionService(
         return releaseResponse;
       }
 
+      const isForkBuild = parsedCurrent.prerelease[0] === "fork";
+      if (isForkBuild) {
+        return releaseResponse;
+      }
+
       return {
         ...releaseResponse,
         updateAvailable: semver.gt(parsedLatest, parsedCurrent),

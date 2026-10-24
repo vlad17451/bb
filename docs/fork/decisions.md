@@ -33,3 +33,9 @@ Related upstream request: [get-bb/bb#5446](https://github.com/get-bb/bb/issues/5
 **Problem.** In a question from the agent, the "Other" field inserts a newline on Enter and submits only on Ctrl+Enter or Cmd+Enter. The composer sends on Enter, so a typed answer ends up with a stray newline instead of being submitted.
 
 **Change.** `handleFreeTextKeyDown` in `packages/shared-ui/src/components/ui/question-form.tsx` follows the composer: on a device that is not coarse (`usePointerCoarse()`), Enter advances to the next question or submits, and Shift+Enter inserts a newline. Ctrl+Enter and Cmd+Enter still submit everywhere. Coarse-pointer devices (phones, tablets, touchscreen hybrids) keep Enter for newlines. The test `leaves free-text Enter available for newlines` is replaced by one test for each behaviour.
+
+## The Updates screen does not offer the official build
+
+**Problem.** `updateAvailable` compared the running version with npm `latest` by semver. A prerelease sorts below its release, so `0.46.1` is greater than `0.46.1-fork.N` and every fork build showed an update arrow, the command `npx bb-app@latest` and the global update badge. That command would start the official package instead of the fork. `--no-in-app-updates` hides only the Update button.
+
+**Change.** `getSystemVersion` in `apps/server/src/services/system/app-version.ts` keeps `updateAvailable` false when the running version has a `fork` prerelease, and still reports `latestVersion`. `UpdatesSettingsSection.tsx` derives the upstream base from `currentVersion` and, when npm `latest` differs from it, shows a quiet "upstream 0.46.1 · npm 0.46.2" next to the version, without a badge or button. The server contract is unchanged, which keeps rebases small.
