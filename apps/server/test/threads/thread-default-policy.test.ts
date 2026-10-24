@@ -776,6 +776,26 @@ describe("resolveThreadExecutionPermissionMode", () => {
     ).toBe("accept-edits");
   });
 
+  it.each([
+    ["claude-code", "accept-edits"],
+    ["codex", "read-only"],
+  ] as const)(
+    "gives a %s child of a read-only parent its least privileged mode",
+    (providerId, expected) => {
+      expect(
+        resolveThreadExecutionPermissionMode(registry, {
+          parentThread: makeParentThread(),
+          parentThreadExecutionPermissionMode: "read-only",
+          projectExecutionPermissionMode: "full",
+          thread: makeThread({
+            parentThreadId: "thr-parent-1",
+            providerId,
+          }),
+        }),
+      ).toBe(expected);
+    },
+  );
+
   it("uses project permission defaults for child threads without parent execution history", () => {
     expect(
       resolveThreadExecutionPermissionMode(registry, {

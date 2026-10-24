@@ -8,7 +8,11 @@ import type {
 } from "@bb/domain";
 import { getEnvironment } from "@bb/db";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
-import { DEFAULT_SERVICE_TIER, PERSONAL_PROJECT_ID } from "@bb/domain";
+import {
+  DEFAULT_SERVICE_TIER,
+  PERSONAL_PROJECT_ID,
+  permissionModeRank,
+} from "@bb/domain";
 import type {
   EnvironmentArgs,
   ProviderEnvironmentArgs,
@@ -171,6 +175,12 @@ function resolveSupportedPermissionMode(
 
   if (permissionModes.includes(args.preferredPermissionMode)) {
     return args.preferredPermissionMode;
+  }
+  if (args.preferredPermissionMode === "read-only") {
+    const leastPrivilegedFirst = [...permissionModes].sort(
+      (left, right) => permissionModeRank(left) - permissionModeRank(right),
+    );
+    return leastPrivilegedFirst[0] ?? DEFAULT_PERMISSION_MODE;
   }
   if (permissionModes.includes(DEFAULT_PERMISSION_MODE)) {
     return DEFAULT_PERMISSION_MODE;
