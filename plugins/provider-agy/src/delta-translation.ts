@@ -538,8 +538,13 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
           text: finalStepText,
         });
       }
-      const hasNoStreamedText = stepIndexes.length === 0;
-      if (hasNoStreamedText && response.trim().length > 0) {
+      const lastStepText =
+        lastStepIndex === undefined
+          ? ""
+          : (state.assistantTextByStep.get(lastStepIndex) ?? "").trim();
+      const isResponseCoveredByLastStep =
+        lastStepText.length > 0 && response.trim().startsWith(lastStepText);
+      if (!isResponseCoveredByLastStep && response.trim().length > 0) {
         deltas.push({
           kind: "item.textDelta",
           key: { channel: ASSISTANT_STREAM_KEY },

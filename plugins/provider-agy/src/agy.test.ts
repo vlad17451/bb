@@ -317,6 +317,15 @@ describe("provider-agy", () => {
       ]);
     });
 
+    it("adds the result response as a final message when only an earlier step was streamed", () => {
+      expect(
+        runTurn([
+          responseStep(1, "ACTIVE", "Searching the codebase."),
+          resultEvent("The bug is in the parser."),
+        ]),
+      ).toEqual(["Searching the codebase.", "The bug is in the parser."]);
+    });
+
     it("uses the result response when nothing was streamed", () => {
       expect(runTurn([resultEvent("Done.\n")])).toEqual(["Done."]);
     });
