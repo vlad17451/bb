@@ -4,6 +4,7 @@ set -euo pipefail
 nameserver_rules=""
 while read -r keyword address _; do
   [ "$keyword" = nameserver ] || continue
+  address=${address%%\%*}
   family=ip
   case "$address" in *:*) family=ip6 ;; esac
   nameserver_rules+="    $family daddr $address meta l4proto { tcp, udp } th dport 53 accept"$'\n'
