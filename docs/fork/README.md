@@ -10,7 +10,7 @@ This is a personal fork of [get-bb/bb](https://github.com/get-bb/bb). It exists 
 
 ## Releases
 
-`.github/workflows/fork-release.yml` runs on every push to `fork` and on manual dispatch. It lints the scripts in `fork/` (shellcheck) and itself (actionlint), installs with the frozen lockfile, builds, typechecks and tests `bb-app` and the packages the fork changes, runs upstream's tarball smoke test, packs `packages/bb-app` and creates the GitHub Release `v<version>` with `bb-app-<version>.tgz` as its asset. When that release already exists, it builds without releasing.
+`.github/workflows/fork-release.yml` runs on every push to `fork` and on manual dispatch. It lints the scripts in `fork/` (shellcheck) and itself (actionlint), runs `fork/test.sh` (the release paths of `fork/release.sh` against stub `gh`, `git push` and `curl`), installs with the frozen lockfile, builds, typechecks and tests `bb-app` and the packages the fork changes, runs upstream's tarball smoke test, packs `packages/bb-app` and creates the GitHub Release `v<version>` with `bb-app-<version>.tgz` as its asset. When that release already exists, it builds without releasing.
 
 To release, bump both locked versions (`packages/bb-app` and `apps/desktop`, see `.github/workflows/check-version-lockstep.mjs`) to the next `<upstream version>-fork.<n>` and push.
 
@@ -37,6 +37,7 @@ Dependencies, dev servers, builds and tests run in the fork's dev container, not
 fork/dev.sh pnpm install --frozen-lockfile
 fork/dev.sh pnpm build
 fork/dev.sh pnpm exec turbo run typecheck test --filter=@bb/shared-ui --filter=@bb/app
+fork/dev.sh fork/test.sh
 fork/dev.sh --serve pnpm dev
 fork/dev.sh
 ```
