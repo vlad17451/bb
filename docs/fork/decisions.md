@@ -24,6 +24,14 @@ BB's updater checks the npm registry and, when someone clicks Update, installs t
 
 Related upstream request: [get-bb/bb#5446](https://github.com/get-bb/bb/issues/5446) asks for an opt-in "Enter inserts newline" setting and does not cover this case.
 
+**Defect, found later.** The query above is not valid Media Queries 4 syntax: `not` may only start a condition or sit inside parentheses. Browsers parse the whole string as `not all` (Firefox reports `matchMedia(...).media` as `"not all"`; by the spec and Blink's parser source, not run, Chromium does the same), so `usePointerCoarse()` is false on every device. Phones and tablets do not behave as before: they get the desktop composer, Return sends, and the terminal key bar never shows. The tests stub `matchMedia` with the exported constant, so they cannot catch it. The valid form, `(any-pointer: coarse) and (not (any-pointer: fine))`, gives the same answer as `(pointer: coarse)` in Chromium on Windows and Linux, which derives the primary pointer from the available ones (source read, not run), so it would not fix the laptop case there either. The change needs rework before the next release.
+
+## Codex finds plugins that ship only a `.claude-plugin` manifest
+
+**Problem.** Codex installs and enables a marketplace plugin whose manifest lives at `.claude-plugin/plugin.json`, with no `.codex-plugin` directory. BB's Codex skill catalog only looked for `.codex-plugin/plugin.json`, so such a plugin's skills never reached a Codex thread.
+
+**Change.** `plugins/provider-codex/src/native-roots.ts` resolves the manifest once per plugin root: `.codex-plugin/plugin.json` when present, else `.claude-plugin/plugin.json`. Shipped in `0.46.1-fork.3`. The same patch is prepared as an upstream pull request; once upstream merges it, a rebase drops the fork's copy. If upstream lands a different version, drop the fork's commit in favour of upstream's.
+
 ## Enter answers a question with a typed answer
 
 **Problem.** In a question from the agent, the "Other" field inserts a newline on Enter and submits only on Ctrl+Enter or Cmd+Enter. The composer sends on Enter, so a typed answer ends up with a stray newline instead of being submitted.
