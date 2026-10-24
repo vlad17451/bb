@@ -130,6 +130,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "provider-agy",
+    pluginId: "provider-agy",
+    defaultEnabled: true,
+  },
+  {
     name: "provider-usage",
     pluginId: "bb--provider-usage",
     defaultEnabled: true,

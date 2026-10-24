@@ -14,6 +14,7 @@ export const UNLISTED_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
   "plugin-api-tester",
   "provider-acp",
   "provider-acp-next",
+  "provider-agy",
   "provider-claude-code",
   "provider-codex",
   "provider-pi",

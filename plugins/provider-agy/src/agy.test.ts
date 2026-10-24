@@ -1,0 +1,229 @@
+import { describe, expect, it } from "vitest";
+import { agyProviderDeclaration } from "./declaration.js";
+import { createAgyDeltaTranslator } from "./delta-translation.js";
+import {
+  buildAgyAvailableModels,
+  resolveAgyModelAndEffort,
+} from "./model-list.js";
+import { normalizeAgyUsage } from "./bridge/provider-maintenance.js";
+
+describe("provider-agy", () => {
+  it("normalizes agy /usage and /credits JSON into ProviderUsage windows", () => {
+    const rawUsage = {
+      conversation_id: "",
+      status: "SUCCESS",
+      command: {
+        name: "usage",
+        data: {
+          groups: [
+            {
+              name: "Gemini Models",
+              buckets: [
+                {
+                  id: "gemini-weekly",
+                  name: "Weekly Limit Remaining",
+                  window: "weekly",
+                  remaining_fraction: 0.9875,
+                  reset_time: "2026-10-31T10:53:58Z",
+                },
+                {
+                  id: "gemini-5h",
+                  name: "Five Hour Limit Remaining",
+                  window: "5h",
+                  remaining_fraction: 0.9814,
+                  reset_time: "2026-10-24T16:00:56Z",
+                },
+              ],
+            },
+            {
+              name: "Claude and GPT models",
+              buckets: [
+                {
+                  id: "3p-weekly",
+                  name: "Weekly Limit Remaining",
+                  window: "weekly",
+                  remaining_fraction: 0.8045,
+                  reset_time: "2026-10-31T11:29:32Z",
+                },
+                {
+                  id: "3p-5h",
+                  name: "Five Hour Limit Remaining",
+                  window: "5h",
+                  remaining_fraction: 0.6248,
+                  reset_time: "2026-10-24T16:29:32Z",
+                },
+              ],
+            },
+            {
+              name: "Gemini 4 Argon",
+              buckets: [
+                {
+                  id: "gemini-argon-wtu-weekly",
+                  name: "Gemini 4 Argon Weekly Limit",
+                  window: "weekly",
+                  remaining_fraction: 0.8209,
+                  reset_time: "2026-10-31T10:47:06Z",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const rawCredits = {
+      command: {
+        name: "credits",
+        data: {
+          remaining_credits: 0,
+          upgrade_uri: "https://antigravity.google/g1-upgrade",
+        },
+      },
+    };
+
+    const usage = normalizeAgyUsage(rawUsage, rawCredits);
+    expect(usage.status).toBe("ok");
+    if (usage.status === "ok") {
+      expect(usage.planLabel).toBe("Pro");
+      expect(usage.windows.map((w) => w.label)).toEqual([
+        "7d · Argon",
+        "5h · Gemini",
+        "7d · Gemini",
+        "5h · Claude/GPT",
+        "7d · Claude/GPT",
+      ]);
+      expect(Math.round(usage.windows[0]!.usedPercent)).toBe(18);
+      expect(Math.round(usage.windows[3]!.usedPercent)).toBe(38);
+    }
+  });
+
+  it("exposes Gemini 4 Argon as default base model and resolves efforts", () => {
+    const catalog = buildAgyAvailableModels();
+    expect(catalog.models[0]?.id).toBe("gemini-4-argon");
+    expect(catalog.models[0]?.isDefault).toBe(true);
+    expect(
+      catalog.selectedOnlyModels.some((m) => m.id === "gemini-4-argon-high"),
+    ).toBe(true);
+
+    expect(resolveAgyModelAndEffort("gemini-4-argon", "high")).toEqual({
+      model: "gemini-4-argon",
+      effort: "high",
+    });
+    expect(resolveAgyModelAndEffort("gemini-4-argon-low", undefined)).toEqual({
+      model: "gemini-4-argon",
+      effort: "low",
+    });
+  });
+
+  it("translates agy stream-json init, step_update, and result events into ThreadDeltas", () => {
+    const translator = createAgyDeltaTranslator();
+    const ctx = { threadId: "t-1", cwd: "/tmp", model: "gemini-4-argon" };
+
+    const initDeltas = translator.translateEvent(
+      {
+        event: "init",
+        conversation_id: "75601961-76d7-43dc-9a47-e5880bc423a7",
+        init: { model: "gemini-4-argon", cwd: "/tmp" },
+      },
+      ctx,
+    );
+    expect(initDeltas).toEqual([
+      {
+        kind: "thread.identity",
+        providerThreadId: "75601961-76d7-43dc-9a47-e5880bc423a7",
+      },
+    ]);
+
+    const stepDeltas = translator.translateEvent(
+      {
+        event: "step_update",
+        step_update: {
+          conversation_id: "75601961-76d7-43dc-9a47-e5880bc423a7",
+          step_index: 1,
+          state: "ACTIVE",
+          step_type: "agent_response",
+          thinking_delta: "Думаю...",
+          text_delta: "Привет!",
+        },
+      },
+      ctx,
+    );
+    expect(stepDeltas).toEqual([
+      {
+        kind: "item.textDelta",
+        key: { channel: "thought" },
+        channel: "reasoningText",
+        text: "Думаю...",
+      },
+      {
+        kind: "item.textDelta",
+        key: { channel: "assistant" },
+        channel: "agentMessage",
+        text: "Привет!",
+      },
+    ]);
+
+    const doneStepDeltas = translator.translateEvent(
+      {
+        event: "step_update",
+        step_update: {
+          conversation_id: "75601961-76d7-43dc-9a47-e5880bc423a7",
+          step_index: 1,
+          state: "DONE",
+          step_type: "agent_response",
+          text_delta: "Привет!",
+        },
+      },
+      ctx,
+    );
+    expect(doneStepDeltas).toEqual([]);
+
+    const resultDeltas = translator.translateEvent(
+      {
+        event: "result",
+        result: {
+          conversation_id: "75601961-76d7-43dc-9a47-e5880bc423a7",
+          status: "SUCCESS",
+          response: "Привет!\n",
+          duration_seconds: 2.7,
+          num_turns: 1,
+          usage: {
+            input_tokens: 6798,
+            output_tokens: 10,
+            thinking_tokens: 5,
+            cache_read_tokens: 0,
+            total_tokens: 6813,
+          },
+        },
+      },
+      ctx,
+    );
+    expect(
+      resultDeltas.some(
+        (d) => d.kind === "item.textClose" && d.channel === "reasoningText",
+      ),
+    ).toBe(true);
+    expect(
+      resultDeltas.some(
+        (d) => d.kind === "item.textClose" && d.channel === "agentMessage",
+      ),
+    ).toBe(true);
+    expect(resultDeltas.some((d) => d.kind === "usage")).toBe(true);
+    expect(
+      resultDeltas.some(
+        (d) => d.kind === "turn.boundary" && d.status === "completed",
+      ),
+    ).toBe(true);
+  });
+
+  it("derives sandboxEnabled default as false when setting is unset", () => {
+    const decl = agyProviderDeclaration();
+    const options = decl.deriveProviderOptions?.({
+      threadId: "thr_1",
+      projectId: "prj_1",
+      model: "gemini-4-argon",
+      permissionMode: "accept-edits",
+      settings: {},
+    });
+    expect(options).toEqual({ sandboxEnabled: false });
+  });
+});
