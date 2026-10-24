@@ -42,6 +42,7 @@ fork/dev.sh --serve pnpm dev
 fork/dev.sh
 ```
 
+- `.git` and `fork/` are mounted read-only on top of the repository. The host runs both later (git reads `.git/config`, which can name hooks or an fsmonitor command; the developer runs `fork/release.sh`), so a dependency that could write them would run code on the host. `fork/dev-isolation-test.sh`, run on the host, checks this against a control write.
 - The pnpm store lives in the named volume `bb-fork-pnpm-store`.
 - The container runs as `0:0`. Under rootless podman that is the developer's own UID on the host, so files in the repository keep their owner. `--userns keep-id` fails on the owner's host with `crun: write to uid_map`.
 - Before the command starts, the entrypoint adds an nftables egress filter in the container's network namespace: the internet and the DNS servers from `/etc/resolv.conf` are open; private networks, link-local (which includes podman's `host.containers.internal`), CGNAT and the tailnet (`100.64.0.0/10`), multicast and the IPv6 equivalents are rejected. It then drops `CAP_NET_ADMIN`, so nothing in the container can change the filter. Without it, a dependency could reach services on the host or the tailnet, such as an unauthenticated BB published with Tailscale Serve.

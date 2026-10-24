@@ -4,7 +4,7 @@ set -euo pipefail
 usage="Usage: fork/dev.sh [--serve] [<command> [args...]]
 
 Builds the fork's dev container and runs <command> (default: bash) in it with
-only the repository mounted (at /repo). --serve also publishes the dev app and
+only the repository mounted (at /repo; .git and fork/ read-only). --serve also publishes the dev app and
 server ports on 127.0.0.1, for example: fork/dev.sh --serve pnpm dev"
 
 repo_dir=$(cd "$(dirname "$0")/.." && pwd)
@@ -35,6 +35,8 @@ run_args=(
   --user 0:0
   --cap-add NET_ADMIN
   -v "$repo_dir:$container_repo_dir:z"
+  -v "$repo_dir/.git:$container_repo_dir/.git:ro,z"
+  -v "$repo_dir/fork:$container_repo_dir/fork:ro,z"
   -v "$store_volume:/pnpm-store"
   -w "$container_repo_dir"
 )
