@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_presentationTitle as presentationTitle } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   CODEX_ASYNC_QUESTION_EXTENSION_KIND,
   codexAsyncQuestionStateSchema,
@@ -77,7 +78,7 @@ export function registerAsyncQuestions(bb: BbPluginApi): void {
       rendererId: CODEX_ASYNC_QUESTION_RENDERER_ID,
       title:
         state.questions.length === 1
-          ? state.questions[0].title
+          ? (presentationTitle(state.questions[0].title) ?? "Question")
           : `${state.questions.length} questions`,
       payload: { questions: state.questions },
       timeoutMs: QUESTION_TIMEOUT_MS,
