@@ -21,4 +21,12 @@ ${nameserver_rules}    ip daddr { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172
 }
 EOF
 
-exec setpriv --bounding-set=-net_admin --inh-caps=-net_admin --ambient-caps=-net_admin -- "$@"
+command_status=0
+setpriv --bounding-set=-net_admin --inh-caps=-net_admin --ambient-caps=-net_admin -- "$@" || command_status=$?
+
+for _ in $(seq 300); do
+  pgrep -x git >/dev/null || break
+  sleep 0.1
+done
+
+exit "$command_status"
