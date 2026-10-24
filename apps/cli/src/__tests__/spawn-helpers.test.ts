@@ -299,13 +299,13 @@ describe("parseServiceTier", () => {
 describe("parsePermissionMode", () => {
   it("throws for invalid mode", () => {
     expect(() => parsePermissionMode("readwrite")).toThrow(
-      "Invalid permission mode 'readwrite'. Expected accept-edits, auto, or full.",
+      "Invalid permission mode 'readwrite'. Expected read-only, accept-edits, auto, or full.",
     );
   });
 
   it("does not widen legacy readonly mode", () => {
     expect(() => parsePermissionMode("readonly")).toThrow(
-      "Invalid permission mode 'readonly'. Expected accept-edits, auto, or full.",
+      "Invalid permission mode 'readonly'. Expected read-only, accept-edits, auto, or full.",
     );
   });
 });

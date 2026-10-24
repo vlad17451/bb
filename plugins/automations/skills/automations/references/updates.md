@@ -22,7 +22,7 @@ Choose one of two execution update forms:
 - A partial agent update preserves every omitted execution field and edits the
   existing agent automation in place. Use any combination of `--prompt`,
   `--provider`, `--model`, `--reasoning`, `--service-tier`, and
-  `--permission-mode accept-edits|auto|full`, then choose at most one execution
+  `--permission-mode read-only|accept-edits|auto|full`, then choose at most one execution
   target. When changing providers, pass the provider's coherent model,
   reasoning, tier, and permission selection together:
 

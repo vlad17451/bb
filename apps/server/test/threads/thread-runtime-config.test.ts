@@ -680,6 +680,62 @@ describe("thread runtime config", () => {
     });
   });
 
+  it("accepts read-only for a Codex thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-permission-mode-read-only",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+
+      const execution = await buildExecutionOptions(
+        harness.deps,
+        { model: "gpt-5", permissionMode: "read-only" },
+        { threadId: thread.id },
+      );
+
+      expect(execution.permissionMode).toBe("read-only");
+    });
+  });
+
+  it("rejects read-only for a provider that cannot enforce it", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-permission-mode-read-only-claude",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "claude-code",
+      });
+
+      await expect(
+        buildExecutionOptions(
+          harness.deps,
+          { model: "claude-opus-4-1", permissionMode: "read-only" },
+          { threadId: thread.id },
+        ),
+      ).rejects.toThrow("Provider claude-code only supports");
+    });
+  });
+
   it("rejects permission modes unsupported by the provider", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

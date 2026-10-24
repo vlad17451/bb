@@ -468,6 +468,7 @@ function normalizeRecordedPermissionMode(
   permissionMode: RecordedPermissionMode,
 ): PermissionMode {
   switch (permissionMode) {
+    case "read-only":
     case "accept-edits":
     case "auto":
     case "full":

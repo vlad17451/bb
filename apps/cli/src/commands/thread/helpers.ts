@@ -25,7 +25,7 @@ export const DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS =
 export const SERVICE_TIER_HELP =
   "Service tier id the provider lists for the model, such as default or fast (see `bb provider models`)";
 export const PERMISSION_MODE_HELP =
-  "Permission mode: accept-edits, auto, or full";
+  "Permission mode: read-only (Codex only), accept-edits, auto, or full";
 export const PLAN_HELP =
   "Send the message as the provider's /plan action so the agent proposes a plan for approval before executing";
 
@@ -188,6 +188,6 @@ export function parsePermissionMode(
     return parsed.data;
   }
   throw new Error(
-    `Invalid permission mode '${value}'. Expected accept-edits, auto, or full.`,
+    `Invalid permission mode '${value}'. Expected read-only, accept-edits, auto, or full.`,
   );
 }

@@ -62,7 +62,12 @@ function isReasoningLevel(value: string): value is ReasoningLevel {
 }
 
 function isPermissionMode(value: string): value is PermissionMode {
-  return value === "accept-edits" || value === "auto" || value === "full";
+  return (
+    value === "read-only" ||
+    value === "accept-edits" ||
+    value === "auto" ||
+    value === "full"
+  );
 }
 
 function isStoredReasoningLevel(value: string): value is StoredReasoningLevel {

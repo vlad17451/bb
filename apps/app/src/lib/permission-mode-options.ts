@@ -10,6 +10,7 @@ export interface PermissionModeOption extends CorePermissionModeOption {
 }
 
 const PERMISSION_MODE_ICONS: Record<PermissionMode, IconName> = {
+  "read-only": "Eye",
   "accept-edits": "FolderEdit",
   auto: "SecurityCheck",
   full: "SquareUnlock02",

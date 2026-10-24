@@ -3081,8 +3081,13 @@ function reconcileExecutionSettings(
   session: AcpThreadSession,
   options: BridgeExecutionOptions,
 ): AcpThreadSession | Promise<AcpThreadSession> {
-  if (options.permissionMode === "auto") {
-    throw new Error('ACP does not support permission mode "auto".');
+  if (
+    options.permissionMode === "auto" ||
+    options.permissionMode === "read-only"
+  ) {
+    throw new Error(
+      `ACP does not support permission mode "${options.permissionMode}".`,
+    );
   }
   const launchSpec = decodeLaunchSpec(options.providerOptions);
   const envVars =

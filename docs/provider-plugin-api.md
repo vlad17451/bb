@@ -62,7 +62,7 @@ bb.providers.register({
   maintenance: { health: true, usage: true, installation: true }, // each defaults to false
   capabilities: {
     // pre-session facts, one client shape: ProviderInfo
-    permissionModes: ["accept-edits", "auto", "full"], // closed core enum
+    permissionModes: ["accept-edits", "auto", "full"], // closed core enum; add "read-only" only if the provider can enforce it
     fork: "checkpoint", // "none" | "tip" | "checkpoint"
     supportsNativeUserQuestion: true,
     supportsManualCompaction: true,
@@ -367,7 +367,9 @@ command · file_change · tool_use { tool, presentation } · permission_grant
 ```
 
 `accept-edits` approves `file_change`; `auto` approves `command` +
-`file_change` + `tool_use`; `full` approves all.
+`file_change` + `tool_use`; `full` approves all. `read-only` carries no
+reviewer or escalation, like `full`: the provider's own sandbox must refuse
+every write, so nothing reaches an approval.
 
 A `tool_use` approval is any tool call with no core kind (an MCP tool, a
 provider-native tool). Its `presentation` — the same label, glyph, tint,

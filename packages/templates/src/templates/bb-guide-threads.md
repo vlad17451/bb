@@ -64,7 +64,7 @@ Spawning:
     --option <option=value>        Choose a value for an option the provider's model lists, applied
                                    before the first message; true or false for an on/off option
                                    (repeatable; see `bb provider models`)
-    --permission-mode <mode>       Permission mode: accept-edits, auto, or full
+    --permission-mode <mode>       Permission mode: read-only (Codex only), accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
     --pinned                       Create the thread in Pinned (combines with --section;
@@ -82,6 +82,8 @@ Spawning:
   requested provider or Codex and resolves its provider-reported default model
   on the target machine (or the first catalog model when none is marked). The product reasoning and permission defaults are
   medium and auto.
+  read-only (Codex only) runs in a read-only sandbox with no approvals: the
+  agent can read and run commands but cannot write files.
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
@@ -125,7 +127,7 @@ Forking:
     --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new worktree; omit for the project default
     --title <title>                Thread title (idle forks default to "(1) <source title>")
-    --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
+    --permission-mode <mode>       Inherit source by default; accepts read-only, accept-edits, auto, full
     --visibility <visibility>      visible (default) or hidden
     --agent-context-seed <text>    Persist agent-only context without a first run
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path

@@ -60,6 +60,7 @@ const ACCEPTED_POLICY_SHAPES: readonly PolicyCell[] = [
   "auto|workspace|automatic|ask",
   "auto|workspace|automatic|deny",
   "full|full|-|-",
+  "read-only|read-only|-|-",
 ];
 
 const POLICY_CELLS = permissionModeValues.flatMap((permissionMode) =>
@@ -80,12 +81,21 @@ const POLICY_CELLS = permissionModeValues.flatMap((permissionMode) =>
 
 describe("runtime permission policy shapes", () => {
   it("enumerates the full cross product", () => {
-    expect(permissionModeValues).toEqual(["accept-edits", "auto", "full"]);
-    expect(runtimePermissionScopeValues).toEqual(["workspace", "full"]);
+    expect(permissionModeValues).toEqual([
+      "read-only",
+      "accept-edits",
+      "auto",
+      "full",
+    ]);
+    expect(runtimePermissionScopeValues).toEqual([
+      "read-only",
+      "workspace",
+      "full",
+    ]);
     expect(approvalReviewerValues).toEqual(["user", "automatic"]);
     expect(permissionEscalationValues).toEqual(["ask", "deny"]);
-    expect(POLICY_CELLS).toHaveLength(3 * 2 * 3 * 3);
-    expect(runtimePermissionPolicySchema.options).toHaveLength(3);
+    expect(POLICY_CELLS).toHaveLength(4 * 3 * 3 * 3);
+    expect(runtimePermissionPolicySchema.options).toHaveLength(4);
   });
 
   it.each(POLICY_CELLS)(

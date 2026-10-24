@@ -519,7 +519,7 @@ describe("SDK public type entrypoints", () => {
 
   it("exports only the public permission presets", () => {
     expectTypeOf<RootPermissionMode>().toEqualTypeOf<
-      "accept-edits" | "auto" | "full"
+      "read-only" | "accept-edits" | "auto" | "full"
     >();
   });
 

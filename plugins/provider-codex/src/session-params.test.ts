@@ -53,6 +53,13 @@ const AUTO_DENY_OPTIONS = {
   permissionEscalation: "deny",
 } satisfies RuntimePermissionPolicy;
 
+const READ_ONLY_OPTIONS = {
+  permissionMode: "read-only",
+  permissionScope: "read-only",
+  approvalReviewer: null,
+  permissionEscalation: null,
+} satisfies RuntimePermissionPolicy;
+
 const FULL_OPTIONS = {
   permissionMode: "full",
   permissionScope: "full",
@@ -449,6 +456,15 @@ function permissionSettings(
 }
 
 describe("codex permission settings", () => {
+  it("runs read-only scope in Codex's read-only sandbox without approvals", () => {
+    expect(permissionSettings(READ_ONLY_OPTIONS, ["/extra-root"])).toEqual({
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandbox: "read-only",
+      sandboxPolicy: { type: "readOnly", networkAccess: true },
+    });
+  });
+
   it("defaults full permission scope to unreviewed danger-full-access", () => {
     expect(permissionSettings(FULL_OPTIONS)).toEqual({
       approvalPolicy: "never",

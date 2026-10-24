@@ -11,8 +11,9 @@ import {
 } from "../src/shared-types.js";
 
 describe("permission modes", () => {
-  it("exposes only the three current public presets", () => {
+  it("exposes only the four current public presets", () => {
     expect(permissionModeSchema.options).toEqual([
+      "read-only",
       "accept-edits",
       "auto",
       "full",
@@ -28,6 +29,7 @@ describe("permission modes", () => {
       "accept-edits",
     );
     expect(permissionModeInputSchema.safeParse("readonly").success).toBe(false);
+    expect(permissionModeInputSchema.parse("read-only")).toBe("read-only");
   });
 });
 

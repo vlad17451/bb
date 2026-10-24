@@ -304,9 +304,12 @@ export function buildAcpSessionParams(
     ...launchSpec.env,
     ...(options.envVars ?? {}),
   };
-  if (options.permissionMode === "auto") {
+  if (
+    options.permissionMode === "auto" ||
+    options.permissionMode === "read-only"
+  ) {
     throw new Error(
-      `Provider "${args.providerLabel}" does not support permission mode "auto".`,
+      `Provider "${args.providerLabel}" does not support permission mode "${options.permissionMode}".`,
     );
   }
   return {

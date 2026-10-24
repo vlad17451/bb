@@ -33,6 +33,10 @@ export function toClaudePermissionMode(
   policy: RuntimePermissionPolicy,
 ): ClaudePermissionMode {
   switch (policy.permissionMode) {
+    case "read-only":
+      throw new Error(
+        'Claude Code does not support permission mode "read-only".',
+      );
     case "accept-edits":
       return "acceptEdits";
     case "auto":

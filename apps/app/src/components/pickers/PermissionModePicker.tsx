@@ -8,6 +8,8 @@ type PermissionModeOption = PickerOption<PermissionMode>;
 
 function getPermissionModeCompactLabel(value: PermissionMode): string {
   switch (value) {
+    case "read-only":
+      return "Read";
     case "full":
       return "Full";
     case "accept-edits":

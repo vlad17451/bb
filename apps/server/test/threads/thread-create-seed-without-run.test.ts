@@ -570,6 +570,42 @@ describe("thread creation child-thread boundary validation", () => {
     );
   });
 
+  it("sends the read-only policy to the runtime for a Codex thread", async () => {
+    await withChildBoundaryHarness(
+      "read-only-codex-start",
+      async ({ harness, hostId, path, projectId }) => {
+        const thread = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: textInput("Review this code"),
+          origin: "app",
+          projectId,
+          providerId: "codex",
+          permissionMode: "read-only",
+          startedOnBehalfOf: null,
+        });
+
+        const queuedStart = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === thread.id,
+        );
+        if (queuedStart.command.type !== "thread.start") {
+          throw new Error("Expected a thread.start command");
+        }
+        expect(queuedStart.command.options).toMatchObject({
+          permissionMode: "read-only",
+          permissionScope: "read-only",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        });
+      },
+    );
+  });
+
   it.each<PermissionMode>(["accept-edits", "auto", "full"])(
     "keeps the requested permission mode when forking from a %s source",
     async (sourcePermissionMode) => {

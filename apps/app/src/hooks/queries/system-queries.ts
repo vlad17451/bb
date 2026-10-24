@@ -6,7 +6,6 @@ import type {
   ProviderModelCatalogScope,
 } from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
-import { permissionModeValues } from "@bb/domain";
 import type {
   SystemCliCommandStatus,
   SystemCliSkillsStatusResponse,
@@ -91,7 +90,7 @@ type UseSystemProviderInfoArgs = UseSystemProvidersArgs & {
 
 const SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS = 250;
 const SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT = 1;
-const PLACEHOLDER_PERMISSION_CEILING: PermissionMode = permissionModeValues[0];
+const PLACEHOLDER_PERMISSION_CEILING: PermissionMode = "accept-edits";
 
 function isSameExecutionOptionsRoute(
   previousQueryKey: QueryKey | undefined,

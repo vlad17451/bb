@@ -528,7 +528,7 @@ describe("bb thread spawn command output", () => {
     ).rejects.toThrow("process.exit:1");
 
     expect(console.error).toHaveBeenCalledWith(
-      "Error: Invalid permission mode 'unsafe'. Expected accept-edits, auto, or full.",
+      "Error: Invalid permission mode 'unsafe'. Expected read-only, accept-edits, auto, or full.",
     );
   });
 

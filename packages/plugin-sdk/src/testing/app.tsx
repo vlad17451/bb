@@ -1081,6 +1081,7 @@ function TestPermissionModePicker({
       onChange={(event) => {
         const permissionMode = event.target.value;
         if (
+          permissionMode === "read-only" ||
           permissionMode === "accept-edits" ||
           permissionMode === "auto" ||
           permissionMode === "full"
@@ -1089,6 +1090,7 @@ function TestPermissionModePicker({
         }
       }}
     >
+      <option value="read-only">Read Only</option>
       <option value="accept-edits">Accept Edits</option>
       <option value="auto">Approve for me</option>
       <option value="full">Full Access</option>

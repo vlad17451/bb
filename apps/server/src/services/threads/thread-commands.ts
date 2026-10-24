@@ -223,6 +223,15 @@ function toRuntimeExecutionOptions(
     ...(Object.keys(sessionOptions).length > 0 ? { sessionOptions } : {}),
     providerOptions,
   };
+  if (permissionMode === "read-only") {
+    return {
+      ...base,
+      permissionMode,
+      permissionScope: "read-only",
+      approvalReviewer: null,
+      permissionEscalation: null,
+    };
+  }
   if (permissionMode === "full") {
     return {
       ...base,

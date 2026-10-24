@@ -511,6 +511,12 @@ export function toCodexThreadPermissionSettings(
 ): CodexThreadPermissionSettings {
   const permissionPolicy = options;
   switch (permissionPolicy.permissionScope) {
+    case "read-only":
+      return {
+        approvalPolicy: "never",
+        approvalsReviewer: toCodexApprovalsReviewer(options),
+        sandbox: "read-only",
+      };
     case "workspace":
       return {
         approvalPolicy: toWorkspaceApprovalPolicy(permissionPolicy),
@@ -526,20 +532,30 @@ export function toCodexThreadPermissionSettings(
   }
 }
 
+function toCodexSandboxPolicy(
+  args: ToCodexPermissionSettingsArgs,
+): SandboxPolicy {
+  switch (args.options.permissionScope) {
+    case "read-only":
+      return { type: "readOnly", networkAccess: true };
+    case "workspace":
+      return toWorkspaceWriteCodexSandboxPolicy(
+        combineWorkspaceWriteRoots(
+          args.gitWritableRoots,
+          args.additionalWorkspaceWriteRoots,
+        ),
+      );
+    case "full":
+      return { type: "dangerFullAccess" };
+  }
+}
+
 export function toCodexPermissionSettings(
   args: ToCodexPermissionSettingsArgs,
 ): CodexPermissionSettings {
   return {
     ...toCodexThreadPermissionSettings(args.options),
-    sandboxPolicy:
-      args.options.permissionScope === "workspace"
-        ? toWorkspaceWriteCodexSandboxPolicy(
-            combineWorkspaceWriteRoots(
-              args.gitWritableRoots,
-              args.additionalWorkspaceWriteRoots,
-            ),
-          )
-        : { type: "dangerFullAccess" },
+    sandboxPolicy: toCodexSandboxPolicy(args),
   };
 }
 

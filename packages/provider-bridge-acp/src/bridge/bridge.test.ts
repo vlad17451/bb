@@ -2697,7 +2697,10 @@ describe("acp bridge", () => {
         await runPermissionChangeCase(
           {
             async start(options) {
-              if (options.permissionMode === "auto")
+              if (
+                options.permissionMode === "auto" ||
+                options.permissionMode === "read-only"
+              )
                 throw new Error("Unsupported ACP mode");
               ({ providerThreadId } = await startThread({
                 permissionMode: options.permissionMode,

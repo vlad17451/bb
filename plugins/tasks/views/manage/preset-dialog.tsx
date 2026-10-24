@@ -33,6 +33,7 @@ type ReasoningLevel = ExperimentalProviderModelPickerValue["reasoningLevel"];
 type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
 export const PERMISSION_LABELS: Record<PresetPermissionMode, string> = {
+  "read-only": "Read Only",
   "accept-edits": "Accept Edits",
   auto: "Approve for me",
   full: "Full Access",
