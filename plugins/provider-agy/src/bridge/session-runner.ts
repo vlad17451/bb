@@ -29,10 +29,17 @@ export interface AgyRunningTurn {
   done: Promise<void>;
 }
 
-export async function startAgyTurn(
-  options: AgyTurnExecutionOptions,
-): Promise<AgyRunningTurn> {
-  const command = await agyExecutable();
+export function buildAgyTurnArgs(
+  options: Pick<
+    AgyTurnExecutionOptions,
+    | "conversationId"
+    | "model"
+    | "reasoningLevel"
+    | "permissionMode"
+    | "agyMode"
+    | "sandboxEnabled"
+  >,
+): string[] {
   const { model, effort } = resolveAgyModelAndEffort(
     options.model,
     options.reasoningLevel,
@@ -63,11 +70,20 @@ export async function startAgyTurn(
     args.push("--mode", "accept-edits");
   }
 
-  if (options.sandboxEnabled === true) {
+  const isAutoModeWithoutPrompts = options.permissionMode === "auto";
+  if (options.sandboxEnabled === true || isAutoModeWithoutPrompts) {
     args.push("--sandbox");
   }
 
   args.push("-p=");
+  return args;
+}
+
+export async function startAgyTurn(
+  options: AgyTurnExecutionOptions,
+): Promise<AgyRunningTurn> {
+  const command = await agyExecutable();
+  const args = buildAgyTurnArgs(options);
 
   const env: NodeJS.ProcessEnv = {
     ...withoutBridgeRuntimeEnv(process.env),

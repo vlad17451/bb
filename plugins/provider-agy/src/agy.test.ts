@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { agyProviderDeclaration } from "./declaration.js";
 import { createAgyDeltaTranslator } from "./delta-translation.js";
 import {
@@ -6,6 +7,7 @@ import {
   resolveAgyModelAndEffort,
 } from "./model-list.js";
 import { normalizeAgyUsage } from "./bridge/provider-maintenance.js";
+import { buildAgyTurnArgs } from "./bridge/session-runner.js";
 
 describe("provider-agy", () => {
   it("normalizes agy /usage and /credits JSON into ProviderUsage windows", () => {
@@ -156,7 +158,7 @@ describe("provider-agy", () => {
       },
       {
         kind: "item.textDelta",
-        key: { channel: "assistant" },
+        key: { channel: "assistant-1" },
         channel: "agentMessage",
         text: "Привет!",
       },
@@ -213,6 +215,139 @@ describe("provider-agy", () => {
         (d) => d.kind === "turn.boundary" && d.status === "completed",
       ),
     ).toBe(true);
+  });
+
+  describe("agent messages", () => {
+    const THREAD_ID = "t-1";
+    const ctx = { threadId: THREAD_ID, cwd: "/work", model: "gemini-3.8-flash" };
+
+    function runTurn(events: readonly unknown[]): string[] {
+      const translator = createAgyDeltaTranslator();
+      const assembler = createDeltaAssembler({
+        providerId: "agy",
+        entropyPrefix: "agy-test",
+        textDeltaFlushMs: 0,
+      });
+      const threadEvents = [
+        ...assembler.assemble({
+          threadId: THREAD_ID,
+          deltas: [{ kind: "turn.open" }],
+        }),
+        ...events.flatMap((event) =>
+          assembler.assemble({
+            threadId: THREAD_ID,
+            deltas: translator.translateEvent(event, ctx),
+          }),
+        ),
+      ];
+      return threadEvents.flatMap((event) =>
+        event.type === "item/completed" && event.item.type === "agentMessage"
+          ? [event.item.text]
+          : [],
+      );
+    }
+
+    function responseStep(
+      stepIndex: number,
+      state: "ACTIVE" | "DONE",
+      textDelta: string,
+    ): unknown {
+      return {
+        event: "step_update",
+        step_update: {
+          conversation_id: "conv-1",
+          step_index: stepIndex,
+          state,
+          step_type: "planner_response",
+          text_delta: textDelta,
+        },
+      };
+    }
+
+    function resultEvent(response: string): unknown {
+      return {
+        event: "result",
+        result: { conversation_id: "conv-1", status: "SUCCESS", response },
+      };
+    }
+
+    it("keeps the full final response when only its first chunk was streamed", () => {
+      expect(
+        runTurn([
+          responseStep(22, "ACTIVE", "Image generation could not be"),
+          resultEvent(
+            "Image generation could not be completed due to a quota error.",
+          ),
+        ]),
+      ).toEqual([
+        "Image generation could not be completed due to a quota error.",
+      ]);
+    });
+
+    it("completes a message from a DONE update that carries the remainder", () => {
+      expect(
+        runTurn([
+          responseStep(3, "ACTIVE", "Hello, "),
+          responseStep(3, "DONE", "world."),
+          resultEvent(""),
+        ]),
+      ).toEqual(["Hello, world."]);
+    });
+
+    it("completes a message from a DONE update that carries the whole text", () => {
+      expect(
+        runTurn([
+          responseStep(3, "ACTIVE", "Hello, "),
+          responseStep(3, "DONE", "Hello, world."),
+          resultEvent(""),
+        ]),
+      ).toEqual(["Hello, world."]);
+    });
+
+    it("keeps responses from separate steps as separate messages", () => {
+      expect(
+        runTurn([
+          responseStep(1, "ACTIVE", "Started the Image Generator."),
+          responseStep(5, "ACTIVE", "The generator hit its quota."),
+          resultEvent("The generator hit its quota."),
+        ]),
+      ).toEqual([
+        "Started the Image Generator.",
+        "The generator hit its quota.",
+      ]);
+    });
+
+    it("uses the result response when nothing was streamed", () => {
+      expect(runTurn([resultEvent("Done.\n")])).toEqual(["Done."]);
+    });
+  });
+
+  it("runs commands in the agy sandbox in auto mode, where headless agy denies unsandboxed ones", () => {
+    const baseOptions = {
+      conversationId: null,
+      model: "gemini-3.8-flash",
+    };
+    expect(
+      buildAgyTurnArgs({
+        ...baseOptions,
+        permissionMode: "auto",
+        sandboxEnabled: false,
+      }),
+    ).toContain("--sandbox");
+    expect(
+      buildAgyTurnArgs({
+        ...baseOptions,
+        permissionMode: "accept-edits",
+        sandboxEnabled: false,
+      }),
+    ).not.toContain("--sandbox");
+    expect(
+      buildAgyTurnArgs({
+        ...baseOptions,
+        permissionMode: "full",
+        sandboxEnabled: false,
+      }),
+    ).not.toContain("--sandbox");
   });
 
   it("derives sandboxEnabled default as false when setting is unset", () => {

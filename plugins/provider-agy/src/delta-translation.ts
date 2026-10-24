@@ -248,10 +248,27 @@ function toTokenUsageBreakdown(
   };
 }
 
+function assistantStreamKey(stepIndex: number): { channel: string } {
+  return { channel: `${ASSISTANT_STREAM_KEY}-${String(stepIndex)}` };
+}
+
+function completeStepText(streamedText: string, doneText: string): string {
+  return doneText.startsWith(streamedText)
+    ? doneText
+    : `${streamedText}${doneText}`;
+}
+
+function preferFullResponse(stepText: string, response: string): string {
+  const isResponseFullerVersion =
+    response.trim().length > stepText.trim().length &&
+    response.trim().startsWith(stepText.trim());
+  return isResponseFullerVersion ? response : stepText;
+}
+
 interface ThreadTranslationState {
   cumulativeUsage: ThreadEventTokenUsageBreakdown;
   openedSteps: Map<string, DeltaItemShape>;
-  streamedAssistantText: string;
+  assistantTextByStep: Map<number, string>;
   streamedThinkingText: string;
   turnSeq: number;
   model: string | undefined;
@@ -277,7 +294,7 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
       state = {
         cumulativeUsage: ZERO_TOKEN_USAGE,
         openedSteps: new Map(),
-        streamedAssistantText: "",
+        assistantTextByStep: new Map(),
         streamedThinkingText: "",
         turnSeq: 0,
         model,
@@ -341,13 +358,26 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
           step.text_delta &&
           step.text_delta.length > 0
         ) {
-          state.streamedAssistantText += step.text_delta;
+          const streamedText =
+            state.assistantTextByStep.get(step.step_index) ?? "";
+          state.assistantTextByStep.set(
+            step.step_index,
+            `${streamedText}${step.text_delta}`,
+          );
           deltas.push({
             kind: "item.textDelta",
-            key: { channel: ASSISTANT_STREAM_KEY },
+            key: assistantStreamKey(step.step_index),
             channel: "agentMessage",
             text: step.text_delta,
           });
+        }
+        if (step.state === "DONE" && step.text_delta) {
+          const streamedText =
+            state.assistantTextByStep.get(step.step_index) ?? "";
+          state.assistantTextByStep.set(
+            step.step_index,
+            completeStepText(streamedText, step.text_delta),
+          );
         }
         return deltas;
       }
@@ -491,28 +521,39 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
       }
       state.streamedThinkingText = "";
 
-      const finalText = (
-        state.streamedAssistantText ||
-        result.response ||
-        ""
-      ).trim();
-      if (finalText.length > 0) {
-        if (state.streamedAssistantText.length === 0 && result.response) {
-          deltas.push({
-            kind: "item.textDelta",
-            key: { channel: ASSISTANT_STREAM_KEY },
-            channel: "agentMessage",
-            text: result.response,
-          });
-        }
+      const response = result.response ?? "";
+      const stepIndexes = [...state.assistantTextByStep.keys()];
+      const lastStepIndex = stepIndexes[stepIndexes.length - 1];
+      for (const [stepIndex, stepText] of state.assistantTextByStep) {
+        const finalStepText = (
+          stepIndex === lastStepIndex
+            ? preferFullResponse(stepText, response)
+            : stepText
+        ).trim();
+        if (finalStepText.length === 0) continue;
+        deltas.push({
+          kind: "item.textClose",
+          key: assistantStreamKey(stepIndex),
+          channel: "agentMessage",
+          text: finalStepText,
+        });
+      }
+      const hasNoStreamedText = stepIndexes.length === 0;
+      if (hasNoStreamedText && response.trim().length > 0) {
+        deltas.push({
+          kind: "item.textDelta",
+          key: { channel: ASSISTANT_STREAM_KEY },
+          channel: "agentMessage",
+          text: response,
+        });
         deltas.push({
           kind: "item.textClose",
           key: { channel: ASSISTANT_STREAM_KEY },
           channel: "agentMessage",
-          text: finalText,
+          text: response.trim(),
         });
       }
-      state.streamedAssistantText = "";
+      state.assistantTextByStep.clear();
 
       if (result.denied_actions && result.denied_actions.length > 0) {
         const names = result.denied_actions
