@@ -6,7 +6,8 @@ usage="Usage: fork/release.sh [--yes]
 Releases bb-app from the fork branch without waiting for GitHub Actions:
 builds in the fork's dev container, publishes the tarball as GitHub Release
 v<version> (bumping to the next -fork.N first when the current version is
-already released), pushes fork, sets BB_VERSION in bb-harness/.env and runs
+already released from another commit; when it is released from HEAD, a
+previous run failed after the publish and this run resumes there), pushes fork, sets BB_VERSION in bb-harness/.env and runs
 setup.sh. --yes skips the confirmations; without a terminal they fail."
 
 repo_dir=$(cd "$(dirname "$0")/.." && pwd)
@@ -67,7 +68,16 @@ release_exists() {
   gh release view "v$1" --repo "$gh_repo" >/dev/null 2>&1
 }
 
-if release_exists "$current"; then
+released_commit() {
+  git -C "$repo_dir" ls-remote origin "refs/tags/v$1" | cut -f1
+}
+
+resume=false
+if release_exists "$current" && [ "$(released_commit "$current")" = "$(git -C "$repo_dir" rev-parse HEAD)" ]; then
+  version=$current
+  resume=true
+  echo "v$version is already released from HEAD, resuming after the publish"
+elif release_exists "$current"; then
   version="${current%-fork.*}-fork.$((${current##*-fork.} + 1))"
   echo "v$current is already released, bumping to $version"
   confirm "Commit the version bump 'Release bb-app $version'?"
@@ -84,24 +94,32 @@ tag=v$version
 tarball_name=bb-app-$version.tgz
 echo "release: $tag from $release_commit"
 
-step "Build in the dev container"
-"$repo_dir/fork/dev.sh" pnpm install --frozen-lockfile
-"$repo_dir/fork/dev.sh" pnpm exec turbo run build "${build_filters[@]}" --output-logs=new-only
-"$repo_dir/fork/dev.sh" pnpm exec turbo run smoke:tarball --filter=bb-app --force --output-logs=new-only
-"$repo_dir/fork/dev.sh" sh -c "cd packages/bb-app && rm -f ./*.tgz && npm pack"
-work_dir=$(mktemp -d)
-trap 'rm -rf "$work_dir"' EXIT
-mv "$repo_dir/packages/bb-app/$tarball_name" "$work_dir/"
-tarball=$work_dir/$tarball_name
-[ -f "$tarball" ] || fail "npm pack did not produce $tarball_name"
+build_and_publish() {
+  step "Build in the dev container"
+  "$repo_dir/fork/dev.sh" pnpm install --frozen-lockfile
+  "$repo_dir/fork/dev.sh" pnpm exec turbo run build "${build_filters[@]}" --output-logs=new-only
+  "$repo_dir/fork/dev.sh" pnpm exec turbo run smoke:tarball --filter=bb-app --force --output-logs=new-only
+  "$repo_dir/fork/dev.sh" sh -c "cd packages/bb-app && rm -f ./*.tgz && npm pack"
+  work_dir=$(mktemp -d)
+  trap 'rm -rf "$work_dir"' EXIT
+  mv "$repo_dir/packages/bb-app/$tarball_name" "$work_dir/"
+  tarball=$work_dir/$tarball_name
+  [ -f "$tarball" ] || fail "npm pack did not produce $tarball_name"
 
-step "Publish $tag"
-confirm "Push tag $tag to origin and create GitHub Release $tag on $gh_repo?"
-git -C "$repo_dir" push origin "$release_commit:refs/tags/$tag"
-gh release create "$tag" "$tarball" \
-  --repo "$gh_repo" \
-  --title "bb-app $version" \
-  --notes "bb-app $version built from $release_commit. Install with \`npm install --global ./$tarball_name\` and start with \`--no-in-app-updates\`."
+  step "Publish $tag"
+  confirm "Push tag $tag to origin and create GitHub Release $tag on $gh_repo?"
+  git -C "$repo_dir" push origin "$release_commit:refs/tags/$tag"
+  gh release create "$tag" "$tarball" \
+    --repo "$gh_repo" \
+    --title "bb-app $version" \
+    --notes "bb-app $version built from $release_commit. Install with \`npm install --global ./$tarball_name\` and start with \`--no-in-app-updates\`."
+}
+
+if $resume; then
+  step "Skip the build and publish of $tag"
+else
+  build_and_publish
+fi
 tarball_url=$BB_RELEASES/$tag/$tarball_name
 for _ in 1 2 3 4 5 6; do
   curl -fsIL -o /dev/null "$tarball_url" && break
