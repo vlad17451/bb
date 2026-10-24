@@ -7,6 +7,7 @@ import {
   resolveAgyModelAndEffort,
 } from "./model-list.js";
 import { normalizeAgyUsage } from "./bridge/provider-maintenance.js";
+import { buildAgyTurnArgs } from "./bridge/session-runner.js";
 
 describe("provider-agy", () => {
   it("normalizes agy /usage and /credits JSON into ProviderUsage windows", () => {
@@ -319,6 +320,34 @@ describe("provider-agy", () => {
     it("uses the result response when nothing was streamed", () => {
       expect(runTurn([resultEvent("Done.\n")])).toEqual(["Done."]);
     });
+  });
+
+  it("runs agy in its terminal sandbox in auto mode", () => {
+    const baseOptions = {
+      conversationId: null,
+      model: "gemini-3.8-flash",
+    };
+    expect(
+      buildAgyTurnArgs({
+        ...baseOptions,
+        permissionMode: "auto",
+        sandboxEnabled: false,
+      }),
+    ).toContain("--sandbox");
+    expect(
+      buildAgyTurnArgs({
+        ...baseOptions,
+        permissionMode: "accept-edits",
+        sandboxEnabled: false,
+      }),
+    ).not.toContain("--sandbox");
+    expect(
+      buildAgyTurnArgs({
+        ...baseOptions,
+        permissionMode: "full",
+        sandboxEnabled: false,
+      }),
+    ).not.toContain("--sandbox");
   });
 
   it("derives sandboxEnabled default as false when setting is unset", () => {

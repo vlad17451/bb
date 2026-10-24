@@ -9,7 +9,7 @@ export default function plugin(bb: BbPluginApi): void {
       type: "boolean",
       label: "Antigravity terminal sandbox",
       description:
-        "Run shell commands inside Antigravity's built-in terminal sandbox.",
+        "Run shell commands inside Antigravity's built-in terminal sandbox. Auto mode always uses it, so that an agy Tool Permission of proceed-in-sandbox can approve commands without prompts.",
       default: false,
     },
   });
