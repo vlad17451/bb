@@ -15,6 +15,7 @@ env_file=$harness_dir/.env
 build_filters=(--filter=bb-app --filter=@bb/config --filter=@bb/server --filter=@bb/shared-ui --filter=@bb/app)
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
+step() { echo "== $(date +%T) $*"; }
 
 yes_flag=false
 case "${1:-}" in
@@ -24,6 +25,12 @@ case "${1:-}" in
   *) fail "unknown argument '$1'"$'\n'"$usage" ;;
 esac
 
+log_dir=${XDG_STATE_HOME:-$HOME/.local/state}/bb-fork
+mkdir -p "$log_dir"
+log_file=$log_dir/release-$(date +%Y%m%d-%H%M%S).log
+exec > >(tee "$log_file") 2>&1
+echo "log: $log_file"
+
 confirm() {
   $yes_flag && return 0
   [ -t 0 ] || fail "no terminal to confirm '$1': re-run with --yes"
@@ -31,7 +38,7 @@ confirm() {
   [ "$answer" = "y" ] || [ "$answer" = "Y" ] || fail "aborted"
 }
 
-echo "== Preconditions"
+step "Preconditions"
 for tool in git node podman gh curl; do
   command -v "$tool" >/dev/null || fail "$tool is not on PATH"
 done
@@ -52,7 +59,7 @@ branch=$(git -C "$repo_dir" branch --show-current)
 [ "$branch" = "fork" ] || fail "repo is on '$branch', expected fork"
 [ -z "$(git -C "$repo_dir" status --porcelain --untracked-files=no)" ] || fail "working tree has uncommitted changes"
 
-echo "== Version"
+step "Version"
 current=$(node -p "require('$repo_dir/packages/bb-app/package.json').version")
 [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+-fork\.[0-9]+$ ]] || fail "bb-app version $current is not <upstream version>-fork.<n>"
 
@@ -77,7 +84,7 @@ tag=v$version
 tarball_name=bb-app-$version.tgz
 echo "release: $tag from $release_commit"
 
-echo "== Build in the dev container"
+step "Build in the dev container"
 "$repo_dir/fork/dev.sh" pnpm install --frozen-lockfile
 "$repo_dir/fork/dev.sh" pnpm exec turbo run build "${build_filters[@]}" --output-logs=new-only
 "$repo_dir/fork/dev.sh" pnpm exec turbo run smoke:tarball --filter=bb-app --force --output-logs=new-only
@@ -88,7 +95,7 @@ mv "$repo_dir/packages/bb-app/$tarball_name" "$work_dir/"
 tarball=$work_dir/$tarball_name
 [ -f "$tarball" ] || fail "npm pack did not produce $tarball_name"
 
-echo "== Publish $tag"
+step "Publish $tag"
 confirm "Push tag $tag to origin and create GitHub Release $tag on $gh_repo?"
 git -C "$repo_dir" push origin "$release_commit:refs/tags/$tag"
 gh release create "$tag" "$tarball" \
@@ -103,11 +110,11 @@ done
 curl -fsIL -o /dev/null "$tarball_url" || fail "release asset is not downloadable at $tarball_url"
 echo "published $tarball_url"
 
-echo "== Push fork"
+step "Push fork"
 confirm "Push fork to origin? The fork-release workflow will rebuild $tag without releasing."
 git -C "$repo_dir" push origin fork
 
-echo "== Deploy"
+step "Deploy"
 sed -i "s/^BB_VERSION=.*/BB_VERSION=$version/" "$env_file"
 grep -q "^BB_VERSION=$version$" "$env_file" || fail "failed to set BB_VERSION=$version in $env_file"
 echo "BB_VERSION=$version set in $env_file"
