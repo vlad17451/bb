@@ -165,6 +165,7 @@ interface AgyThreadSession {
   sandboxEnabled?: boolean;
   envVars?: Record<string, string>;
   activeTurn: AgyRunningTurn | null;
+  previousTurnFinished: Promise<void>;
 }
 
 const { send, sendResult, sendError } =
@@ -253,6 +254,7 @@ function startOrResumeSession(
     ),
     envVars: params.options.envVars,
     activeTurn: null,
+    previousTurnFinished: Promise.resolve(),
   };
   sessions.set(params.threadId, session);
   deltaTranslator.resetThread(params.threadId);
@@ -275,6 +277,13 @@ async function handleTurnStart(
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
+
+  const previousTurnFinished = session.previousTurnFinished;
+  let finishThisTurn: () => void = () => undefined;
+  session.previousTurnFinished = new Promise<void>((resolve) => {
+    finishThisTurn = resolve;
+  });
+  await previousTurnFinished;
 
   if (params.options.model !== undefined) {
     session.model = params.options.model;
@@ -338,9 +347,11 @@ async function handleTurnStart(
       if (session.activeTurn === runningTurn) {
         session.activeTurn = null;
       }
+      finishThisTurn();
     });
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
+    finishThisTurn();
     sendError(
       id,
       -32000,
