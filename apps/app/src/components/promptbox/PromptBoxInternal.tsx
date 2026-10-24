@@ -3689,6 +3689,14 @@ export function PromptBoxInternal({
         return true;
       }
 
+      const isModifierSubmitOnTouchDevice =
+        !canSubmitWithEnterKey && isModifierSubmitKeyEvent(event);
+      if (isModifierSubmitOnTouchDevice) {
+        event.preventDefault();
+        submitPrompt();
+        return true;
+      }
+
       if (!canSubmitWithEnterKey) return false;
       const isSubmitKey = event.key === "Enter" && !event.shiftKey;
 

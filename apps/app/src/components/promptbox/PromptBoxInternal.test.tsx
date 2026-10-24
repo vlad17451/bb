@@ -1833,6 +1833,50 @@ describe("PromptBoxInternal submit shortcuts", () => {
     }
   });
 
+  it.each([
+    ["Ctrl+Enter", { ctrlKey: true }],
+    ["Cmd+Enter", { metaKey: true }],
+  ])(
+    "submits %s on a coarse-pointer hybrid without a modifier action",
+    (_label, modifier) => {
+      const restoreMatchMedia = mockPointerCoarse(true);
+      const restoreNavigator = mockNavigatorIdentity({
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+          "AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+        vendor: "Google Inc.",
+        platform: "Win32",
+        maxTouchPoints: 10,
+      });
+      try {
+        const onChange = vi.fn();
+        const onSubmit = vi.fn();
+        render(
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value: "Run this",
+              onChange,
+              onSubmit,
+            })}
+          />,
+        );
+
+        const wasNotCanceled = fireEvent.keyDown(getPromptEditorElement(), {
+          key: "Enter",
+          code: "Enter",
+          ...modifier,
+        });
+
+        expect(wasNotCanceled).toBe(false);
+        expect(onSubmit).toHaveBeenCalledOnce();
+        expect(onChange).not.toHaveBeenCalled();
+      } finally {
+        restoreNavigator();
+        restoreMatchMedia();
+      }
+    },
+  );
+
   it("keeps Magic Keyboard Shift+Enter as a newline on coarse-pointer iPadOS WebKit", async () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     const restoreNavigator = mockIPadOSWebKit();

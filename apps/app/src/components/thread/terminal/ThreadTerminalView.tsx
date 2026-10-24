@@ -22,7 +22,7 @@ import {
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import { appToast } from "@/components/ui/app-toast";
 import type {
   TerminalServerMessage,
@@ -658,7 +658,7 @@ export function ThreadTerminalView({
   onTitleChange,
   session,
 }: ThreadTerminalViewProps) {
-  const isTouchDevice = usePointerCoarse();
+  const isTouchDevice = useMediaQuery("(pointer: coarse)");
   const [controlActive, setControlActive] = useState(false);
   const controlActiveRef = useRef(false);
   const changeControlActive = (active: boolean) => {

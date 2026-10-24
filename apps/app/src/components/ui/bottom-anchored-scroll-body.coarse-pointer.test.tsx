@@ -3,7 +3,6 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
 
@@ -142,7 +141,7 @@ afterEach(() => {
 
 describe("BottomAnchoredScrollBody on coarse pointers", () => {
   it("shows the transient scrollbar with one attribute write per scroll burst", () => {
-    stubMediaQueries(new Set([POINTER_COARSE_QUERY]));
+    stubMediaQueries(new Set(["(pointer: coarse)"]));
     vi.useFakeTimers();
     const { scrollArea } = renderTimeline("coarse-thread", ["row-a"]);
     const attributeWrites = new MutationObserver(() => {});
@@ -164,7 +163,7 @@ describe("BottomAnchoredScrollBody on coarse pointers", () => {
   });
 
   it("captures scroll anchors at the relaxed coarse cadence", () => {
-    stubMediaQueries(new Set([POINTER_COARSE_QUERY]));
+    stubMediaQueries(new Set(["(pointer: coarse)"]));
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const { scrollArea } = renderTimeline("coarse-thread", ["row-a"]);
 

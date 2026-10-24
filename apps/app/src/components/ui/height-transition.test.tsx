@@ -2,7 +2,6 @@
 
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { AutoHeightContainer, HeightTransition } from "./height-transition";
 
 class ResizeObserverStub implements ResizeObserver {
@@ -191,7 +190,7 @@ describe("AutoHeightContainer growth easing", () => {
 
   it("snaps growth on a coarse pointer", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
-    stubMediaQueries(new Set([POINTER_COARSE_QUERY]));
+    stubMediaQueries(new Set(["(pointer: coarse)"]));
     stubScrollAnchoringSupport(true);
 
     expect(renderWrapper().style.transition).toContain("height 0ms");
