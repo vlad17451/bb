@@ -37,6 +37,7 @@ if [ "$default_branch" != "fork" ]; then
   echo "Default branch of $repo: fork (was $default_branch)"
 fi
 
+workflows=$(gh api --paginate "repos/$repo/actions/workflows" --jq '.workflows[] | [.id, .path, .state] | @tsv')
 while IFS=$'\t' read -r workflow_id workflow_path workflow_state; do
   if [ "$workflow_path" = "$fork_workflow" ]; then
     [ "$workflow_state" = active ] || gh workflow enable "$workflow_id" --repo "$repo"
@@ -45,6 +46,6 @@ while IFS=$'\t' read -r workflow_id workflow_path workflow_state; do
   [ "$workflow_state" = active ] || continue
   gh workflow disable "$workflow_id" --repo "$repo"
   echo "Disabled $workflow_path"
-done < <(gh api --paginate "repos/$repo/actions/workflows" --jq '.workflows[] | [.id, .path, .state] | @tsv')
+done <<<"$workflows"
 
 echo "OK: $repo releases only through $fork_workflow"
