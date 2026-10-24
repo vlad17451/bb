@@ -66,6 +66,24 @@ describe("provider-agy bridge", () => {
     rmSync(workDir, { recursive: true, force: true });
   });
 
+  it("does not offer skill injection and refuses skills/configure", async () => {
+    bridge.sendRequest(1, "initialize", {
+      protocolVersion: 2,
+      client: { name: "test", version: "0.0.0" },
+    });
+    const initializeResponse = await bridge.waitForResponse(1);
+    expect(initializeResponse.result).toMatchObject({
+      capabilities: { skills: { configure: false } },
+    });
+
+    bridge.sendRequest(2, "skills/configure", {
+      roots: [{ id: "global-skills:test", path: workDir, skills: [] }],
+    });
+    const configureResponse = await bridge.waitForResponse(2);
+    expect(configureResponse.error).toBeDefined();
+    expect(configureResponse.result).toBeUndefined();
+  });
+
   it("starts the next turn only after the previous agy process exits, in its conversation", async () => {
     bridge.sendRequest(1, "thread/start", {
       threadId: THREAD_ID,

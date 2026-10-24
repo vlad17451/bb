@@ -49,3 +49,9 @@ Related upstream request: [get-bb/bb#5446](https://github.com/get-bb/bb/issues/5
 The policy builder in `thread-commands.ts` and Codex's sandbox policy used to fall through to `accept-edits` and `dangerFullAccess` for any unknown mode; both now handle `read-only` explicitly, and Codex's sandbox policy is an exhaustive `switch`. The UI's placeholder permission ceiling stays `accept-edits` instead of following the first entry of the list.
 
 **Not for Antigravity.** A control run on 2026-10-25 with agy 1.4.7 (`--mode plan --sandbox`) refused `touch` in the terminal (`Read-only file system`) but created a file through agy's own `write_file` tool. The CLI has no per-process deny rules; the only hard block is a `PreToolUse` hook in a global `hooks.json`, so agy does not declare `read-only`.
+
+## Antigravity does not claim skill injection
+
+**Problem.** The agy bridge declared `skills: { configure: true }` and answered `skills/configure` with `ok` while discarding the roots, so BB believed its global skills reached agy threads when they never did.
+
+**Change.** `plugins/provider-agy/src/bridge/bridge.ts` declares `skills: { configure: false }` and no longer decodes `skills/configure`, so the runtime never sends it and a stray request is refused as an unknown method (the `skills/configure-declared` conformance rule). agy threads run without BB's injected skills, as before. Delivering them needs global agy state (`~/.gemini/config` skills or plugins, or symlinks into a user skill root) on both BB instances; that is left for later.

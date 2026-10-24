@@ -19,7 +19,6 @@ import {
   providerInstallationStatusParamsSchema,
   providerMaintenanceParamsSchema,
   runBridgeRequest,
-  skillsConfigureParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
   threadResumeParamsSchema,
@@ -86,10 +85,6 @@ const agyCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/discard"),
     params: threadDiscardParamsSchema,
-  }),
-  z.object({
-    method: z.literal("skills/configure"),
-    params: skillsConfigureParamsSchema,
   }),
 ]);
 
@@ -392,7 +387,7 @@ async function handleRequest(
           approvalEnforcedBy: "runtime",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "queue",
-          skills: { configure: true },
+          skills: { configure: false },
         },
       };
       sendResult(request.id, result);
@@ -455,9 +450,6 @@ async function handleRequest(
       sendResult(request.id, { ok: true });
       break;
     }
-    case "skills/configure":
-      sendResult(request.id, { ok: true });
-      break;
   }
 }
 
