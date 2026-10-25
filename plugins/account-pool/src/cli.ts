@@ -186,6 +186,7 @@ function formatConfig(config: AccountPoolConfig): string {
     `codexUpstreamBaseUrl: ${config.codexUpstreamBaseUrl}`,
     `switchThreshold: ${config.switchThreshold}`,
     `parentMode: ${config.parentMode}`,
+    `preferPriority: ${config.preferPriority}`,
   ].join("\n");
 }
 
@@ -223,8 +224,19 @@ function parseConfigUpdate(
   if (key === "parentMode") {
     return accountPoolConfigSetInputSchema.parse({ parentMode: value });
   }
+  if (key === "preferPriority") {
+    const isBooleanText = value === "true" || value === "false";
+    if (!isBooleanText) {
+      throw new PluginCliError("preferPriority must be true or false.", {
+        code: "invalid_value",
+      });
+    }
+    return accountPoolConfigSetInputSchema.parse({
+      preferPriority: value === "true",
+    });
+  }
   throw new PluginCliError(
-    "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, or parentMode.",
+    "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, parentMode, or preferPriority.",
     { code: "invalid_value" },
   );
 }
@@ -730,13 +742,13 @@ export function registerPoolCli(
             {
               name: "key",
               description:
-                "anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, or parentMode",
+                "anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, parentMode, or preferPriority",
               required: true,
             },
             {
               name: "value",
               description:
-                "HTTP(S) URL for the upstream keys, a number above 0 and at most 1 for switchThreshold, proxy or isolate for parentMode",
+                "HTTP(S) URL for the upstream keys, a number above 0 and at most 1 for switchThreshold, proxy or isolate for parentMode, true or false for preferPriority",
               required: true,
             },
           ],

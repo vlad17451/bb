@@ -21,7 +21,7 @@ bb pool account refresh <id>
 bb pool status [--json]
 bb pool routing <claude|codex> [--off]
 bb pool config
-bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode> <value>
+bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode|preferPriority> <value>
 bb pool parent [proxy|isolate]
 bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
@@ -92,6 +92,14 @@ conversations can advance. A model-family limit detours only requests for that
 family without moving the session's main pin or the provider cursor. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
+
+`bb pool config set preferPriority true` changes this: every request, in new
+and existing conversations alike, goes to the eligible account with the lowest
+priority number, so the pool returns to the first account as soon as it has
+quota again. A conversation that moves back loses its provider prompt cache
+once. While the first account is under a temporary hold, the usual rules apply:
+conversations pinned to it wait or get Retry-After, and new conversations move
+on. The default, `false`, keeps the sticky behaviour described above.
 
 Claude accounts with an exhausted subscription window remain eligible as a
 fallback when Anthropic reports extra usage enabled with remaining allowance,

@@ -849,7 +849,8 @@ export class AccountPoolHub {
     );
     signal.throwIfAborted();
     const now = this.options.now();
-    const threshold = this.options.getSettings().switchThreshold;
+    const { switchThreshold: threshold, preferPriority } =
+      this.options.getSettings();
     const available = accounts
       .filter((account) => account.provider === provider && account.enabled)
       .map((account) => ({
@@ -928,8 +929,17 @@ export class AccountPoolHub {
         candidates.find((candidate) => candidate.account.id === account.id),
       )
       .find((candidate) => candidate !== undefined);
+    const highestPriorityUnattempted = preferPriority
+      ? unattempted[0]
+      : undefined;
+    const highestPriorityCandidate =
+      highestPriorityUnattempted !== undefined &&
+      candidates.includes(highestPriorityUnattempted)
+        ? highestPriorityUnattempted
+        : undefined;
     const selected =
-      bound !== undefined && unattempted.includes(bound)
+      highestPriorityCandidate ??
+      (bound !== undefined && unattempted.includes(bound)
         ? bound
         : (inherited ??
           (boundAccountId === null &&
@@ -938,7 +948,7 @@ export class AccountPoolHub {
           unattempted.includes(activeAccount)
             ? activeAccount
             : next) ??
-          null);
+          null));
     if (selected === null) return null;
     if (routing.active === null)
       routing.pinnedAccountId = boundAccountId ?? inherited?.account.id ?? null;
@@ -976,12 +986,14 @@ export class AccountPoolHub {
     const rebind =
       affinityKey !== null &&
       !familyDetour(boundAccountId) &&
-      (bound === undefined ||
+      (preferPriority ||
+        bound === undefined ||
         bound.account.id === selected.account.id ||
         (binding === routing.binding && attempted.has(bound.account.id)));
     const advance =
       !familyDetour(active.accountId) &&
-      (activeAccount === undefined ||
+      (preferPriority ||
+        activeAccount === undefined ||
         active.accountId === selected.account.id ||
         (active === routing.active && attempted.has(active.accountId)));
     return {

@@ -376,6 +376,7 @@ describe("Account Pool config schema", () => {
       codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
       switchThreshold: 0.98,
       parentMode: "proxy",
+      preferPriority: false,
     });
     expect(
       accountPoolConfigSetInputSchema.safeParse({
@@ -476,6 +477,7 @@ describe("Account Pool plugin", () => {
       codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
       switchThreshold: 0.75,
       parentMode: "proxy",
+      preferPriority: false,
     });
     expect(
       accountPoolConfigSchema.parse(await host.bb.storage.kv.get("config")),
@@ -3834,6 +3836,129 @@ describe("Account Pool plugin", () => {
           "sk-third",
           "sk-third",
           "sk-third",
+        ]);
+      },
+    );
+
+    it.each(["claude", "codex"] as const)(
+      "returns %s sessions and the pool cursor to the first account when preferPriority is on",
+      async (provider) => {
+        let outage = false;
+        const attempts: string[] = [];
+        const fixture = await affinityFixture(
+          provider,
+          async (_input, init) => {
+            const headers = new Headers(init?.headers);
+            const key =
+              headers.get("x-api-key") ??
+              headers.get("authorization")?.slice(7) ??
+              "";
+            attempts.push(key);
+            return Response.json(
+              {},
+              { status: outage && key !== "sk-third" ? 503 : 200 },
+            );
+          },
+        );
+        if (provider === "claude") await addApiAccount(fixture, "sk-third");
+        else
+          await fixture.host.harness.behavior.callRpc("account.add", {
+            provider,
+            source: { kind: "import" },
+            label: null,
+            priority: 100,
+          });
+        await fixture.host.harness.behavior.callRpc("config.set", {
+          preferPriority: true,
+        });
+        const send = async (id: string) => {
+          const response = await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            provider === "claude" ? "/v1/messages" : "/v1/responses",
+            {
+              headers: { ...authHeaders(fixture.key), "session-id": id },
+              body: provider === "claude" ? claudeBody(id) : "{}",
+            },
+          );
+          expect(response.status).toBe(200);
+          await response.text();
+        };
+        await send("warm");
+        outage = true;
+        await send("warm");
+        await send("fresh");
+        outage = false;
+        await send("warm");
+        await send("fresh-after-recovery");
+        expect(attempts).toEqual([
+          "sk-first",
+          "sk-first",
+          "sk-second",
+          "sk-third",
+          "sk-first",
+          "sk-second",
+          "sk-third",
+          "sk-first",
+          "sk-first",
+        ]);
+      },
+    );
+
+    it.each(["claude", "codex"] as const)(
+      "keeps %s holds and moves the session pin back to the first account when preferPriority is on",
+      async (provider) => {
+        let now = 1_800_000_000_000;
+        let limited = false;
+        const attempts: string[] = [];
+        const fixture = await affinityFixture(
+          provider,
+          async (_input, init) => {
+            const headers = new Headers(init?.headers);
+            const key =
+              headers.get("x-api-key") ??
+              headers.get("authorization")?.slice(7) ??
+              "";
+            attempts.push(key);
+            return limited && key === "sk-first"
+              ? Response.json(
+                  {},
+                  { status: 429, headers: { "retry-after": "60" } },
+                )
+              : Response.json({});
+          },
+          () => now,
+        );
+        await fixture.host.harness.behavior.callRpc("config.set", {
+          preferPriority: true,
+        });
+        const send = async (id: string, status = 200) => {
+          const response = await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            provider === "claude" ? "/v1/messages" : "/v1/responses",
+            {
+              headers: { ...authHeaders(fixture.key), "session-id": id },
+              body: provider === "claude" ? claudeBody(id) : "{}",
+            },
+          );
+          expect(response.status).toBe(status);
+          await response.text();
+        };
+        await send("warm");
+        limited = true;
+        await send("warm", 429);
+        await send("fresh");
+        await send("warm", 429);
+        now += 60_000;
+        limited = false;
+        await send("fresh");
+        limited = true;
+        await send("fresh", 429);
+        expect(attempts).toEqual([
+          "sk-first",
+          "sk-first",
+          "sk-second",
+          "sk-first",
+          "sk-first",
         ]);
       },
     );

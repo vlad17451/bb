@@ -5,6 +5,7 @@ export const DEFAULT_ACCOUNT_POOL_CONFIG = {
   codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
   switchThreshold: 0.98,
   parentMode: "proxy" as const,
+  preferPriority: false,
 };
 
 const httpUrlSchema = z.string().refine((value) => {
@@ -37,6 +38,9 @@ export const accountPoolConfigSchema = z
     parentMode: parentModeSchema.default(
       DEFAULT_ACCOUNT_POOL_CONFIG.parentMode,
     ),
+    preferPriority: z
+      .boolean()
+      .default(DEFAULT_ACCOUNT_POOL_CONFIG.preferPriority),
   })
   .strict();
 
@@ -48,6 +52,7 @@ export const accountPoolConfigSetInputSchema = z
     codexUpstreamBaseUrl: httpUrlSchema.optional(),
     switchThreshold: switchThresholdSchema.optional(),
     parentMode: parentModeSchema.optional(),
+    preferPriority: z.boolean().optional(),
   })
   .strict();
 
