@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildTimelineViewRows } from "@bb/thread-view";
+import {
+  buildTimelineViewRows,
+  type ThreadTimelineViewRow,
+  type TimelineWorkSummaryChild,
+} from "@bb/thread-view";
 import {
   ECHO_RECEIPT_PRESENTATION,
   commandRow,
@@ -7,7 +11,9 @@ import {
   delegationRow,
   extensionRow,
   imageViewRow,
+  questionRow,
   systemRow,
+  toolRow,
   workflowRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import {
@@ -36,6 +42,46 @@ const extensionPresentation = {
   ...ECHO_RECEIPT_PRESENTATION,
   icon: { glyph: "Check" },
 };
+
+function reasoningRow(
+  id: string,
+  turnId = "question-turn",
+): Extract<TimelineWorkSummaryChild, { kind: "system" }> {
+  const row = systemRow({
+    id,
+    turnId,
+    operationKind: "reasoning",
+    detail: "Context for the question",
+  });
+  if (row.systemKind !== "operation") {
+    throw new Error("expected a reasoning operation row");
+  }
+  return {
+    ...row,
+    operationKind: "reasoning",
+    status: "completed",
+  };
+}
+
+function summaryRow(
+  kind: "bundle-summary" | "step-summary",
+  children: TimelineWorkSummaryChild[],
+): ThreadTimelineViewRow {
+  const { threadId, turnId, sourceSeqStart, sourceSeqEnd, startedAt, createdAt } =
+    children[0] ?? reasoningRow("empty");
+  return {
+    id: "summary",
+    threadId,
+    turnId,
+    sourceSeqStart,
+    sourceSeqEnd,
+    startedAt,
+    createdAt,
+    kind,
+    status: "completed",
+    children,
+  };
+}
 
 describe("isRowExpandable", () => {
   it.each([
@@ -73,6 +119,206 @@ describe("isRowExpandable", () => {
 });
 
 describe("collectTimelineAutoExpansionRowIds", () => {
+  it.each([1, 2])(
+    "opens %i consecutive reasoning rows before a pending question",
+    (count) => {
+      const thoughts = Array.from({ length: count }, (_, index) =>
+        reasoningRow(`thought-${index}`),
+      );
+      const rows = buildTimelineViewRows([
+        ...thoughts,
+        questionRow({ turnId: "question-turn" }),
+      ]);
+
+      const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+        rows,
+        scopeActive: true,
+      });
+
+      expect([...liveExpandedRowIds].sort()).toEqual(
+        thoughts.map((row) => row.id).sort(),
+      );
+    },
+  );
+
+  it.each(["bundle-summary", "step-summary"] as const)(
+    "opens a reasoning-only %s and its children before a pending question",
+    (kind) => {
+      const rows: ThreadTimelineViewRow[] = [
+        summaryRow(kind, [reasoningRow("thought")]),
+        questionRow({ turnId: "question-turn" }),
+      ];
+
+      const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+        rows,
+        scopeActive: true,
+      });
+
+      expect([...liveExpandedRowIds].sort()).toEqual(["summary", "thought"]);
+    },
+  );
+
+  it.each([
+    {
+      label: "assistant text",
+      boundary: conversationRow({ role: "assistant", turnId: "question-turn", text: "Assistant text." }),
+    },
+    {
+      label: "user input",
+      boundary: conversationRow({ role: "user", turnId: "question-turn", text: "User text." }),
+    },
+    {
+      label: "tool work",
+      boundary: toolRow({ turnId: "question-turn" }),
+    },
+    {
+      label: "command work",
+      boundary: commandRow({ turnId: "question-turn", command: "git status" }),
+    },
+    {
+      label: "a previous question",
+      boundary: questionRow({
+        id: "previous-question",
+        turnId: "question-turn",
+      }),
+    },
+    {
+      label: "another turn",
+      boundary: reasoningRow("previous-turn-thought", "previous-turn"),
+    },
+  ])("stops at $label before a pending question", ({ boundary }) => {
+    const rows: ThreadTimelineViewRow[] = [
+      reasoningRow("earlier-thought"),
+      boundary,
+      reasoningRow("question-context"),
+      questionRow({ turnId: "question-turn" }),
+    ];
+
+    const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+      rows,
+      scopeActive: true,
+    });
+
+    expect([...liveExpandedRowIds]).toEqual(["question-context"]);
+  });
+
+  it("opens only the reasoning after the last tool work before a pending question", () => {
+    const rows = buildTimelineViewRows([
+      reasoningRow("earlier-thought"),
+      toolRow({ turnId: "question-turn" }),
+      reasoningRow("later-thought"),
+      questionRow({ turnId: "question-turn" }),
+    ]);
+
+    const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+      rows,
+      scopeActive: true,
+    });
+
+    expect(liveExpandedRowIds.has("later-thought")).toBe(true);
+    expect(liveExpandedRowIds.has("earlier-thought")).toBe(false);
+  });
+
+  it("opens a mixed summary and only its trailing reasoning before a pending question", () => {
+    const rows: ThreadTimelineViewRow[] = [
+      reasoningRow("outside-thought"),
+      summaryRow("bundle-summary", [
+        reasoningRow("earlier-thought"),
+        toolRow({ turnId: "question-turn" }),
+        reasoningRow("later-thought"),
+      ]),
+      questionRow({ turnId: "question-turn" }),
+    ];
+
+    const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+      rows,
+      scopeActive: true,
+    });
+
+    expect([...liveExpandedRowIds].sort()).toEqual(["later-thought", "summary"]);
+  });
+
+  it.each(["answered", "resolving", "interrupted"] as const)(
+    "does not open reasoning for a question that is %s",
+    (lifecycle) => {
+      const rows = buildTimelineViewRows([
+        reasoningRow("thought"),
+        questionRow({ turnId: "question-turn", lifecycle }),
+      ]);
+
+      const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+        rows,
+        scopeActive: true,
+      });
+
+      expect([...liveExpandedRowIds]).toEqual([]);
+    },
+  );
+
+  it("releases question context when newer assistant output becomes the frontier", () => {
+    const rows = buildTimelineViewRows([
+      reasoningRow("thought"),
+      questionRow({ turnId: "question-turn" }),
+    ]);
+
+    expect([
+      ...collectTimelineAutoExpansionRowIds({ rows, scopeActive: true })
+        .liveExpandedRowIds,
+    ]).toEqual(["thought"]);
+
+    const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+      rows: [...rows, conversationRow({ role: "assistant", text: "Newer output." })],
+      scopeActive: true,
+    });
+
+    expect([...liveExpandedRowIds]).toEqual([]);
+  });
+
+  it.each([
+    {
+      scopeActive: true,
+      status: "pending",
+      expected: ["delegation", "thought"],
+    },
+    { scopeActive: false, status: "pending", expected: [] },
+    { scopeActive: true, status: "completed", expected: ["delegation"] },
+  ] as const)(
+    "opens nested question context with active=$scopeActive and delegation=$status",
+    ({ scopeActive, status, expected }) => {
+      const rows = buildTimelineViewRows([
+        delegationRow({
+          id: "delegation",
+          status,
+          childRows: [
+            reasoningRow("thought"),
+            questionRow({ turnId: "question-turn" }),
+          ],
+        }),
+      ]);
+
+      const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+        rows,
+        scopeActive,
+      });
+
+      expect([...liveExpandedRowIds].sort()).toEqual([...expected]);
+    },
+  );
+
+  it("does not open reasoning before a pending question in an inactive scope", () => {
+    const rows = buildTimelineViewRows([
+      reasoningRow("thought"),
+      questionRow({ turnId: "question-turn" }),
+    ]);
+
+    const { liveExpandedRowIds } = collectTimelineAutoExpansionRowIds({
+      rows,
+      scopeActive: false,
+    });
+
+    expect([...liveExpandedRowIds]).toEqual([]);
+  });
+
   it("returns no auto-expanded ids when the scope is inactive", () => {
     const rows = buildTimelineViewRows([
       commandRow({

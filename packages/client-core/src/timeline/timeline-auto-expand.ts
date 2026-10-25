@@ -131,6 +131,52 @@ function shouldAutoExpandTerminalFrontierRow(
   );
 }
 
+function isReasoningRow(row: ThreadTimelineViewRow): boolean {
+  return (
+    row.kind === "system" &&
+    row.systemKind === "operation" &&
+    row.operationKind === "reasoning"
+  );
+}
+
+function addTrailingReasoningRowIds(
+  rows: readonly ThreadTimelineViewRow[],
+  turnId: ThreadTimelineViewRow["turnId"],
+  ids: Set<string>,
+): boolean {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    if (!row || row.turnId !== turnId) {
+      return false;
+    }
+    if (isReasoningRow(row)) {
+      ids.add(row.id);
+      continue;
+    }
+    const isSummary =
+      row.kind === "bundle-summary" || row.kind === "step-summary";
+    if (!isSummary) {
+      return false;
+    }
+    const summaryIds = new Set<string>();
+    const isWholeSummaryReasoning = addTrailingReasoningRowIds(
+      row.children,
+      turnId,
+      summaryIds,
+    );
+    if (summaryIds.size > 0) {
+      ids.add(row.id);
+      for (const id of summaryIds) {
+        ids.add(id);
+      }
+    }
+    if (!isWholeSummaryReasoning) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function visitForTerminalFrontierAutoExpand(
   rows: readonly ThreadTimelineViewRow[],
   ids: Set<string>,
@@ -183,6 +229,14 @@ function visitForLiveFrontierAutoExpand(
   const frontier = findTimelineFrontierRow(rows);
   if (frontier && shouldAutoExpandLiveFrontierRow(frontier)) {
     ids.add(frontier.id);
+  }
+  const isPendingQuestion =
+    frontier?.kind === "work" &&
+    frontier.workKind === "question" &&
+    frontier.lifecycle === "pending";
+  if (frontier && isPendingQuestion) {
+    const rowsBeforeQuestion = rows.slice(0, rows.indexOf(frontier));
+    addTrailingReasoningRowIds(rowsBeforeQuestion, frontier.turnId, ids);
   }
   for (const row of rows) {
     if (
