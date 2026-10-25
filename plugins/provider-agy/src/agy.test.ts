@@ -158,7 +158,15 @@ describe("provider-agy", () => {
       },
       {
         kind: "item.textDelta",
-        key: { channel: "assistant-1" },
+        key: {
+          channel: "assistant-1",
+          providerItemId: JSON.stringify([
+            "t-1",
+            "75601961-76d7-43dc-9a47-e5880bc423a7",
+            0,
+            1,
+          ]),
+        },
         channel: "agentMessage",
         text: "Привет!",
       },
@@ -315,6 +323,80 @@ describe("provider-agy", () => {
         "Started the Image Generator.",
         "The generator hit its quota.",
       ]);
+    });
+
+    it("completes each streamed message once across tools and repeated step indexes", () => {
+      const translator = createAgyDeltaTranslator();
+      const assembler = createDeltaAssembler({
+        providerId: "agy",
+        entropyPrefix: "agy-interleaved-test",
+        textDeltaFlushMs: 0,
+      });
+      const completedIds = new Set<string>();
+
+      for (const turn of [1, 2]) {
+        const firstText = `Searching the codebase, turn ${turn}.`;
+        const secondText = `Found the bug, turn ${turn}.`;
+        const threadEvents = [
+          ...assembler.assemble({
+            threadId: THREAD_ID,
+            deltas: [{ kind: "turn.open" }],
+          }),
+          ...[
+            responseStep(1, "ACTIVE", firstText),
+            responseStep(1, "DONE", firstText),
+            {
+              event: "step_update",
+              step_update: {
+                conversation_id: "conv-1",
+                step_index: 2,
+                state: "DONE",
+                step_type: "tool",
+                tool_info: {
+                  name: "view_file",
+                  parameters: { AbsolutePath: "/work/parser.ts" },
+                  output: "File contents",
+                },
+              },
+            },
+            responseStep(3, "ACTIVE", secondText),
+            responseStep(3, "DONE", secondText),
+            resultEvent(secondText),
+          ].flatMap((event) =>
+            assembler.assemble({
+              threadId: THREAD_ID,
+              deltas: translator.translateEvent(event, ctx),
+            }),
+          ),
+        ];
+        const started = threadEvents.flatMap((event) =>
+          event.type === "item/started" && event.item.type === "agentMessage"
+            ? [event.item.id]
+            : [],
+        );
+        const completed = threadEvents.flatMap((event) =>
+          event.type === "item/completed" && event.item.type === "agentMessage"
+            ? [event.item]
+            : [],
+        );
+
+        expect(started).toHaveLength(2);
+        expect(new Set(started).size).toBe(2);
+        expect(completed.map((item) => item.id)).toEqual(started);
+        expect(completed.map((item) => item.text)).toEqual([
+          firstText,
+          secondText,
+        ]);
+        expect(
+          threadEvents.flatMap((event) =>
+            event.type === "item/agentMessage/delta" ? [event.delta] : [],
+          ),
+        ).toEqual([firstText, secondText]);
+        for (const item of completed) {
+          expect(completedIds.has(item.id)).toBe(false);
+          completedIds.add(item.id);
+        }
+      }
     });
 
     it("adds the result response as a final message when only an earlier step was streamed", () => {

@@ -252,8 +252,14 @@ function toTokenUsageBreakdown(
   };
 }
 
-function assistantStreamKey(stepIndex: number): { channel: string } {
-  return { channel: `${ASSISTANT_STREAM_KEY}-${String(stepIndex)}` };
+function assistantStreamKey(
+  stepIndex: number,
+  providerItemId: string,
+): { channel: string; providerItemId: string } {
+  return {
+    channel: `${ASSISTANT_STREAM_KEY}-${String(stepIndex)}`,
+    providerItemId,
+  };
 }
 
 function completeStepText(streamedText: string, doneText: string): string {
@@ -272,7 +278,7 @@ function preferFullResponse(stepText: string, response: string): string {
 interface ThreadTranslationState {
   cumulativeUsage: ThreadEventTokenUsageBreakdown;
   openedSteps: Map<string, DeltaItemShape>;
-  assistantTextByStep: Map<number, string>;
+  assistantTextByStep: Map<number, { text: string; providerItemId: string }>;
   streamedThinkingText: string;
   turnSeq: number;
   model: string | undefined;
@@ -344,6 +350,15 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
 
       if (stepType === "agent_response" || stepType === "planner_response") {
         const deltas: ThreadDelta[] = [];
+        const assistantStep = state.assistantTextByStep.get(step.step_index) ?? {
+          text: "",
+          providerItemId: JSON.stringify([
+            context.threadId,
+            step.conversation_id,
+            state.turnSeq,
+            step.step_index,
+          ]),
+        };
         if (
           step.state === "ACTIVE" &&
           step.thinking_delta &&
@@ -362,26 +377,25 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
           step.text_delta &&
           step.text_delta.length > 0
         ) {
-          const streamedText =
-            state.assistantTextByStep.get(step.step_index) ?? "";
-          state.assistantTextByStep.set(
-            step.step_index,
-            `${streamedText}${step.text_delta}`,
-          );
+          state.assistantTextByStep.set(step.step_index, {
+            ...assistantStep,
+            text: `${assistantStep.text}${step.text_delta}`,
+          });
           deltas.push({
             kind: "item.textDelta",
-            key: assistantStreamKey(step.step_index),
+            key: assistantStreamKey(
+              step.step_index,
+              assistantStep.providerItemId,
+            ),
             channel: "agentMessage",
             text: step.text_delta,
           });
         }
         if (step.state === "DONE" && step.text_delta) {
-          const streamedText =
-            state.assistantTextByStep.get(step.step_index) ?? "";
-          state.assistantTextByStep.set(
-            step.step_index,
-            completeStepText(streamedText, step.text_delta),
-          );
+          state.assistantTextByStep.set(step.step_index, {
+            ...assistantStep,
+            text: completeStepText(assistantStep.text, step.text_delta),
+          });
         }
         return deltas;
       }
@@ -495,7 +509,10 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
       const response = result.response ?? "";
       const stepIndexes = [...state.assistantTextByStep.keys()];
       const lastStepIndex = stepIndexes[stepIndexes.length - 1];
-      for (const [stepIndex, stepText] of state.assistantTextByStep) {
+      for (const [
+        stepIndex,
+        { text: stepText, providerItemId },
+      ] of state.assistantTextByStep) {
         const finalStepText = (
           stepIndex === lastStepIndex
             ? preferFullResponse(stepText, response)
@@ -504,7 +521,7 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
         if (finalStepText.length === 0) continue;
         deltas.push({
           kind: "item.textClose",
-          key: assistantStreamKey(stepIndex),
+          key: assistantStreamKey(stepIndex, providerItemId),
           channel: "agentMessage",
           text: finalStepText,
         });
@@ -512,7 +529,7 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
       const lastStepText =
         lastStepIndex === undefined
           ? ""
-          : (state.assistantTextByStep.get(lastStepIndex) ?? "").trim();
+          : (state.assistantTextByStep.get(lastStepIndex)?.text ?? "").trim();
       const isResponseCoveredByLastStep =
         lastStepText.length > 0 && response.trim().startsWith(lastStepText);
       if (!isResponseCoveredByLastStep && response.trim().length > 0) {
