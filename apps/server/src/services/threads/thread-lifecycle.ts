@@ -873,7 +873,7 @@ function settleThreadCommandFailure(
   if (outcome.applied) {
     args.deps.hub.notifyThread(thread.id, ["status-changed"]);
   }
-  if (isParentNotifiableChildThread(thread)) {
+  if (isParentNotifiableChildThread(thread) && thread.notifyParentOnTurnEnd) {
     const parentThreadId = thread.parentThreadId;
     postCommitActions.push({
       run: (deps) =>
@@ -1896,7 +1896,8 @@ function interruptActiveThreads(
     if (
       result.interruptedTurnId !== null &&
       thread &&
-      isParentNotifiableChildThread(thread)
+      isParentNotifiableChildThread(thread) &&
+      thread.notifyParentOnTurnEnd
     ) {
       void queueChildThreadTurnNotificationBestEffort(deps, {
         childThread: thread,

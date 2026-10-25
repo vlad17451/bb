@@ -111,6 +111,7 @@ export function createThreadRecord(
       pinned: args.request.pinned ?? false,
       parentThreadId: args.request.parentThreadId ?? null,
       sourceThreadId: args.request.sourceThreadId ?? null,
+      notifyParentOnTurnEnd: args.request.notifyParentOnTurnEnd ?? true,
       lifecycleOwnerThreadId: args.request.lifecycleOwnerThreadId,
       originKind: args.request.originKind,
       originPluginId: args.request.originPluginId ?? null,

@@ -161,7 +161,8 @@ export function queueChildSetupFailureNotification(
   deps: LoggedPendingInteractionWorkSessionDeps,
   thread: Thread,
 ): void {
-  if (!isParentNotifiableChildThread(thread)) return;
+  if (!isParentNotifiableChildThread(thread) || !thread.notifyParentOnTurnEnd)
+    return;
   void queueChildThreadTurnNotificationBestEffort(deps, {
     childThread: thread,
     parentThreadId: thread.parentThreadId,

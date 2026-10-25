@@ -207,6 +207,7 @@ export function seedThread(
     title?: string | null;
     parentThreadId?: string | null;
     sourceThreadId?: string | null;
+    notifyParentOnTurnEnd?: boolean;
     lifecycleOwnerThreadId?: string | null;
     originKind?: ThreadOriginKind | null;
     originPluginId?: string | null;
@@ -223,6 +224,7 @@ export function seedThread(
     titleFallback: args.titleFallback ?? "Test Thread",
     parentThreadId: args.parentThreadId ?? null,
     sourceThreadId: args.sourceThreadId ?? null,
+    notifyParentOnTurnEnd: args.notifyParentOnTurnEnd ?? true,
     lifecycleOwnerThreadId: args.lifecycleOwnerThreadId ?? null,
     originKind: args.originKind ?? null,
     originPluginId: args.originPluginId ?? null,

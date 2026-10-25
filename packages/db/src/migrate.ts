@@ -1469,4 +1469,8 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
   warnAboutFutureAppliedMigrations(db, options);
   validateAppliedMigrationHistory(db, migrationsFolder);
   validatePendingInteractionsSchema(db);
+  drizzleMigrate(db, {
+    migrationsFolder: join(migrationsFolder, "fork"),
+    migrationsTable: "__fork_migrations",
+  });
 }

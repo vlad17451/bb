@@ -270,6 +270,7 @@ export interface CreateThreadInput {
   pinned?: boolean;
   status?: ThreadStatus;
   parentThreadId?: string | null;
+  notifyParentOnTurnEnd?: boolean;
   lifecycleOwnerThreadId?: string | null;
   sourceThreadId?: string | null;
   originKind?: ThreadOriginKind | null;
@@ -339,6 +340,7 @@ export function createThread(
           sourceThreadId:
             input.sourceThreadId ??
             (originKind === null ? null : (input.parentThreadId ?? null)),
+          notifyParentOnTurnEnd: input.notifyParentOnTurnEnd ?? true,
           lifecycleOwnerThreadId: input.lifecycleOwnerThreadId ?? null,
           originKind,
           originPluginId: input.originPluginId ?? null,

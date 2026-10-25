@@ -33,6 +33,7 @@ Spawning:
     --project <id>                 Project (required; when omitted the error prints this thread's project ID to add)
     --parent-thread <id>           Parent thread (may be in another project)
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
+    --no-notify-parent             Suppress parent turn outcomes (requires a parent)
     --lifecycle-owner-thread <id>  Archive/delete with this owner
     --provider <id>                Provider override
     --model <model>                Model override
@@ -88,6 +89,8 @@ Spawning:
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
   Subagents inherit the parent's permission mode by default, adapted to the child provider's supported modes. Explicit requests and a thread's recorded mode take precedence; nesting a thread does not cap its permissions. The host permission ceiling still applies.
+  With --parent-self or --parent-thread, --no-notify-parent suppresses completed, failed, and interrupted turn notifications. Approvals and questions still notify the parent. The SDK create request accepts notifyParentOnTurnEnd: false. This setting is fixed at creation and defaults to true.
+
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization and unread/pending favicon
