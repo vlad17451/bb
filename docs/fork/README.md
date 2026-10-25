@@ -37,6 +37,7 @@ Dependencies, dev servers, builds and tests run in the fork's dev container, not
 fork/dev.sh pnpm install --frozen-lockfile
 fork/dev.sh pnpm build
 fork/dev.sh pnpm exec turbo run typecheck test --filter=@bb/shared-ui --filter=@bb/app
+fork/check-changes.sh
 fork/dev.sh fork/test.sh
 fork/dev.sh --serve pnpm dev
 fork/dev.sh
@@ -51,7 +52,9 @@ fork/dev.sh
 
 ### Tests and known failures
 
-Some tests fail in the dev container on a clean checkout (the Claude Code cases need a non-root user, one test expects another git date format). `fork/test-baseline.sh [--filter=<package> ...]`, run on the host, runs `turbo test` in the container and compares the failures with `fork/known-test-failures.txt`: it prints only new failures (exit 1) and listed failures that now pass. Keep that list to failures checked on a clean checkout.
+`fork/check-changes.sh [<base ref>]`, run on the host after any fork change and before review or commit, runs Turbo typecheck and then `fork/test-baseline.sh` for changed packages and their dependents. The base defaults to `HEAD`; an earlier ref also includes commits through `HEAD`. Both steps include staged, unstaged and untracked files through Turbo's `...[<base>]` filter, stream their output and print log paths under `~/.local/state/bb-fork/`. Either step failing makes the check fail.
+
+Some tests fail in the dev container on a clean checkout (the Claude Code cases need a non-root user, one test expects another git date format). `fork/test-baseline.sh [--filter=<package> ...]`, run on the host, runs `turbo test` in the container and compares the failures with `fork/known-test-failures.txt`: it streams the full output, then summarizes new failures (exit 1) and listed failures that now pass. Keep that list to failures checked on a clean checkout.
 
 A change that adds a value to a closed list (permission modes, scopes, capabilities) follows [closed-enums.md](closed-enums.md).
 

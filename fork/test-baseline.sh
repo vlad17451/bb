@@ -18,7 +18,7 @@ log_file="$log_dir/test-$(date +%Y%m%d-%H%M%S).log"
 
 echo "Running tests in the dev container, log: $log_file"
 turbo_status=0
-"$repo_dir/fork/dev.sh" pnpm exec turbo run test "$@" --continue >"$log_file" 2>&1 || turbo_status=$?
+"$repo_dir/fork/dev.sh" pnpm exec turbo run test "$@" --continue 2>&1 | tee "$log_file" || turbo_status=$?
 sed -i 's/\x1b\[[0-9;]*m//g' "$log_file"
 
 failing=$(sed -nE 's/^([^ :]+):test: +FAIL +([^ ]+ +)?([^ ]+\.[cm]?[jt]sx?( .*)?)$/\1: \3/p' "$log_file" | sed 's/ *$//' | sort -u)
