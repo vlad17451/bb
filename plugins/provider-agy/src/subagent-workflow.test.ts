@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildAgyWorkflowSnapshot,
   createAgySubagentWorkflowTracker,
   findAgySubagentLaunches,
   parseAgyTranscript,
@@ -129,6 +130,35 @@ describe("findAgySubagentLaunches", () => {
     );
 
     expect(findAgySubagentLaunches(steps, TURN_START - 1000).map((launch) => launch.role)).toEqual(["New"]);
+  });
+});
+
+describe("buildAgyWorkflowSnapshot", () => {
+  it("groups agents into phases named by their role prefix, falling back to the launch wave", () => {
+    writeTranscript(PARENT_ID, [
+      launchStep(1, ["Review: correctness", "Review: security"]),
+      launchStep(30, ["Verify: src/a.ts:3", "Probe"]),
+      launchStep(40, ["Review: late", ": no phase", "Trailing: "]),
+    ]);
+    const launches = findAgySubagentLaunches(parseAgyTranscript(readFileSync(transcriptPath(PARENT_ID), "utf8")), TURN_START);
+
+    const snapshot = buildAgyWorkflowSnapshot({ launches, childSteps: new Map(), fallbackModel: "gemini-3.8-flash", now: TURN_START });
+
+    expect(snapshot.phases).toEqual([
+      { index: 1, title: "Review" },
+      { index: 2, title: "Verify" },
+      { index: 3, title: "Wave 2" },
+      { index: 4, title: "Wave 3" },
+    ]);
+    expect(snapshot.agents.map((agent) => [agent.label, agent.phaseIndex, agent.phaseTitle])).toEqual([
+      ["correctness", 1, "Review"],
+      ["security", 1, "Review"],
+      ["src/a.ts:3", 2, "Verify"],
+      ["Probe", 3, "Wave 2"],
+      ["late", 1, "Review"],
+      [": no phase", 4, "Wave 3"],
+      ["Trailing: ", 4, "Wave 3"],
+    ]);
   });
 });
 

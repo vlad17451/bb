@@ -12,6 +12,10 @@ import { resolveAgyModelContextWindow } from "./model-list.js";
 
 const ASSISTANT_STREAM_KEY = "assistant";
 const THOUGHT_STREAM_KEY = "thought";
+const SUBAGENT_WORKFLOW_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "invoke_subagent",
+  "manage_subagents",
+]);
 
 export const agyUsageSchema = z
   .object({
@@ -382,58 +386,25 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
         return deltas;
       }
 
-      if (
-        (stepType === "subagent" ||
-          stepType === "invoke_subagent" ||
-          step.subagent_info !== undefined) &&
-        step.subagent_info
-      ) {
-        const firstSub = step.subagent_info.subagents[0];
-        const label =
-          firstSub?.role ?? firstSub?.type_name ?? "Subagent";
-        const childRef =
-          firstSub?.conversation_id ?? `subagent-${itemId}`;
-        const shape: DeltaItemShape = {
-          type: "delegation",
-          childRef,
-          label,
-          background: false,
-          ...(firstSub?.initial_prompt
-            ? { summary: firstSub.initial_prompt }
-            : {}),
-        };
-        const deltas: ThreadDelta[] = [];
-        if (!state.openedSteps.has(itemId)) {
-          state.openedSteps.set(itemId, shape);
-          deltas.push({
-            kind: "item.open",
-            key: { providerItemId: itemId },
-            item: shape,
-          });
-        }
-        if (step.state === "DONE" || step.state === "ERROR") {
-          state.openedSteps.delete(itemId);
-          deltas.push({
-            kind: "item.close",
-            key: { providerItemId: itemId },
-            status: step.state === "ERROR" ? "failed" : "completed",
-            item: shape,
-          });
-        }
-        return deltas;
+      const toolName = step.tool_info?.name ?? step.tool_name;
+      const isSubagentStep =
+        stepType === "subagent" ||
+        stepType === "invoke_subagent" ||
+        step.subagent_info !== undefined ||
+        (toolName !== undefined && SUBAGENT_WORKFLOW_TOOL_NAMES.has(toolName));
+      if (isSubagentStep) {
+        return [];
       }
 
       if (
         stepType === "tool" ||
         step.tool_info !== undefined ||
-        step.tool_name !== undefined
+        toolName !== undefined
       ) {
-        const toolName =
-          step.tool_info?.name ?? step.tool_name ?? "tool";
         const shape =
           state.openedSteps.get(itemId) ??
           classifyAgyToolShape(
-            toolName,
+            toolName ?? "tool",
             step.tool_info?.parameters,
             context.cwd,
           );

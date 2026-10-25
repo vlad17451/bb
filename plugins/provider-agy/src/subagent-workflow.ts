@@ -201,20 +201,36 @@ function lastAnswerOf(steps: readonly AgyTranscriptStep[]): string | undefined {
   return answers.at(-1)?.content;
 }
 
+const PHASE_SEPARATOR = ": ";
+
+function splitRole(launch: AgySubagentLaunch): { phaseTitle: string; label: string } {
+  const separatorIndex = launch.role.indexOf(PHASE_SEPARATOR);
+  const hasPhasePrefix =
+    separatorIndex > 0 &&
+    separatorIndex + PHASE_SEPARATOR.length < launch.role.length;
+  if (!hasPhasePrefix) {
+    return { phaseTitle: `Wave ${String(launch.phaseIndex)}`, label: launch.role };
+  }
+  return {
+    phaseTitle: launch.role.slice(0, separatorIndex),
+    label: launch.role.slice(separatorIndex + PHASE_SEPARATOR.length),
+  };
+}
+
 export function buildAgyWorkflowSnapshot(args: {
   launches: readonly AgySubagentLaunch[];
   childSteps: ReadonlyMap<string, readonly AgyTranscriptStep[]>;
   fallbackModel: string;
   now: number;
 }): WorkflowProgressSnapshot {
-  const phaseIndexes = [
-    ...new Set(args.launches.map((launch) => launch.phaseIndex)),
-  ];
-  const phases = phaseIndexes.map((index) => ({
-    index,
-    title: `Wave ${String(index)}`,
+  const roles = args.launches.map(splitRole);
+  const phaseTitles = [...new Set(roles.map((role) => role.phaseTitle))];
+  const phases = phaseTitles.map((title, position) => ({
+    index: position + 1,
+    title,
   }));
   const agents = args.launches.map((launch, position): WorkflowAgentSnapshot => {
+    const { phaseTitle, label } = roles[position];
     const steps =
       launch.conversationId === undefined
         ? []
@@ -240,14 +256,14 @@ export function buildAgyWorkflowSnapshot(args: {
       : undefined;
     return {
       index: position + 1,
-      label: launch.role,
+      label,
       state,
       model: launch.model ?? args.fallbackModel,
       attempt: 1,
       cached: false,
       lastProgressAt: launch.finishedAt ?? lastStepAt,
-      phaseIndex: launch.phaseIndex,
-      phaseTitle: `Wave ${String(launch.phaseIndex)}`,
+      phaseIndex: phaseTitles.indexOf(phaseTitle) + 1,
+      phaseTitle,
       ...(launch.typeName === undefined ? {} : { agentType: launch.typeName }),
       queuedAt: launch.launchedAt,
       ...(state === "queued" ? {} : { startedAt }),
