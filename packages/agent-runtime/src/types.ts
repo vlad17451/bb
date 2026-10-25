@@ -341,8 +341,6 @@ export interface AgentRuntime {
 
   listRunningProviders(): string[];
 
-  getSteerMode(threadId: string): "inject" | "queue" | null;
-
   getActiveTurnId(threadId: string): string | null;
 
   waitForActiveTurn(

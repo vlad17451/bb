@@ -1522,19 +1522,6 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
-  "thread.steer_mode": defineHostDaemonCommandDescriptor({
-    type: "thread.steer_mode",
-    schema: hostDaemonThreadTargetSchema.extend({
-      type: z.literal("thread.steer_mode"),
-    }),
-    resultSchema: z.object({
-      steerMode: z.enum(["inject", "queue"]).nullable(),
-    }),
-    transport: "onlineRpc",
-    retryable: false,
-    flushEventsBeforeResult: false,
-    envLane: "read",
-  }),
   "thread.rewind.discard": defineHostDaemonCommandDescriptor({
     type: "thread.rewind.discard",
     schema: threadRewindDiscardCommandSchema,

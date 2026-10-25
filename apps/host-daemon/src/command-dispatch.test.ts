@@ -173,7 +173,6 @@ function createRuntime(): FakeDispatchRuntime {
       throw new Error("Unexpected provider installation run call");
     }),
     listRunningProviders: vi.fn(() => ["fake"]),
-    getSteerMode: () => "inject",
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: vi.fn(
       async (threadId: string) => activeTurnsByThreadId.get(threadId) ?? null,
@@ -408,61 +407,6 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
 }
 
 describe("dispatchCommand", () => {
-  it.each(["inject", "queue", null] as const)(
-    "returns the live steer mode %s without submitting input",
-    async (steerMode) => {
-      const runtime = createRuntime();
-      runtime.setActiveTurn("thread-1", "turn-1");
-      vi.spyOn(runtime, "getSteerMode").mockReturnValue(steerMode);
-      const manager = new RuntimeManager({
-        createRuntime: () => runtime,
-        provisionWorkspace: async () => createWorkspace(),
-      });
-      await manager.ensureEnvironment({
-        environmentId: "env-1",
-        workspacePath: WORKSPACE_PATH,
-        injectedSkillSources: [],
-      });
-      try {
-        const result = await dispatchOnlineRpcCommand(
-          {
-            type: "thread.steer_mode",
-            environmentId: "env-1",
-            threadId: "thread-1",
-          },
-          makeDispatchOptions({ runtimeManager: manager }),
-          new AbortController().signal,
-        );
-        expect(result).toEqual({ steerMode });
-        expect(runtime.getActiveTurnId("thread-1")).toBe("turn-1");
-        expect(runtime.steerTurn).not.toHaveBeenCalled();
-        expect(runtime.runTurn).not.toHaveBeenCalled();
-      } finally {
-        await manager.shutdownAll();
-      }
-    },
-  );
-
-  it("reports no live steer mode for an unloaded environment", async () => {
-    const runtime = createRuntime();
-    const createRuntimeSpy = vi.fn(() => runtime);
-    const manager = new RuntimeManager({
-      createRuntime: createRuntimeSpy,
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "thread.steer_mode",
-        environmentId: "env-missing",
-        threadId: "thread-1",
-      },
-      makeDispatchOptions({ runtimeManager: manager }),
-      new AbortController().signal,
-    );
-    expect(result).toEqual({ steerMode: null });
-    expect(createRuntimeSpy).not.toHaveBeenCalled();
-  });
-
   it("steers an auto submit when the active turn appears after the server snapshot", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({

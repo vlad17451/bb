@@ -55,7 +55,7 @@ describe("child thread notifications", () => {
     expect(message).not.toContain("Child thread updates:");
   });
 
-  it("keeps final output for a single failed outcome", () => {
+  it("omits output for a single failed outcome", () => {
     const message = renderBatchMessage({
       items: [
         {
@@ -74,12 +74,10 @@ describe("child thread notifications", () => {
       [
         "@thread:thr_child failed.",
         "",
-        "Deploy script failed on preflight.",
-        "",
         "Review the thread before deciding next steps.",
       ].join("\n"),
     );
-    expect(message).toContain("Deploy script failed on preflight.");
+    expect(message).not.toContain("Deploy script failed on preflight.");
   });
 
   it("omits terminal output for a single interrupted outcome", () => {
@@ -110,7 +108,7 @@ describe("child thread notifications", () => {
     );
   });
 
-  it("includes failed output in batched child outcomes", () => {
+  it("renders multiple child outcomes as status-only bullet lines", () => {
     const message = renderBatchMessage({
       items: [
         {
@@ -145,7 +143,7 @@ describe("child thread notifications", () => {
       ].join("\n"),
     );
     expect(message).not.toContain("Checkout flow is fixed.");
-    expect(message).toContain("Deploy script failed on preflight.");
+    expect(message).not.toContain("Deploy script failed on preflight.");
   });
 
   it("builds mention ranges for batched outcome thread references", () => {
@@ -336,8 +334,6 @@ describe("child thread notifications", () => {
         "",
         "- @thread:thr_child_one completed, with 2 workflows still running.",
         "- @thread:thr_child_two failed.",
-        "",
-        "Deploy script failed on preflight.",
         "",
         "Threads with a workflow still running have not finished; they will report again when their workflow does.",
       ].join("\n"),

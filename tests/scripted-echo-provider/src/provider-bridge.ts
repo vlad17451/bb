@@ -95,7 +95,6 @@ export const scriptedEchoOptionsSchema = z
     sessionRestorable: z.boolean().optional(),
     toolCallThreadIdHint: z.string().min(1).optional(),
     recoveryThreadIdHint: z.string().min(1).optional(),
-    steerMode: z.enum(["inject", "queue"]).optional(),
     approvalEnforcedBy: z.enum(["runtime", "provider"]).optional(),
     identifyProcess: z.boolean().optional(),
     uniqueProviderThreadIds: z.boolean().optional(),
@@ -904,7 +903,7 @@ const handlers: Record<string, RequestHandler> = {
         fork: "checkpoint",
         approvalEnforcedBy: processOptions.approvalEnforcedBy ?? "runtime",
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
-        steerMode: processOptions.steerMode ?? "inject",
+        steerMode: "inject",
         skills: { configure: true },
       },
     });

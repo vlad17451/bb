@@ -24,14 +24,9 @@ Messaging:
     --file <path>                          CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                         CLI-local absolute path, file: URL, or uploaded image path
 
-  Tell steers by default, delivering the message into the active turn when
-  the provider supports live injection. Providers that declare queued steering
-  hold the message in the existing queue until the turn ends. Delivery errors
-  from an immediate tell are reported to the sender without failing the running
-  turn. A delivery acknowledgement timeout does not cancel the send; check the
-  thread before retrying. Background queue drains log delivery failures.
-  Use --mode queue for non-urgent follow-ups that can wait until the agent is
-  free; --mode auto steers a live turn and starts a new one on an idle
+  Tell steers by default, delivering the message immediately into the active
+  turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
+  is free; --mode auto steers a live turn and starts a new one on an idle
   thread. Input sent while a turn is starting stays in the queue with
   `waitingOn: turn-starting`; `turn/started` wakes it and steers it into that
   turn. A target that is awaiting user interaction (an open question or

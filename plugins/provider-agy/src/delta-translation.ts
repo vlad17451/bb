@@ -212,7 +212,8 @@ function classifyAgyToolShape(
   }
 
   if (toolName === "read_url_content") {
-    const url = toOptionalString(params?.Url) ?? toOptionalString(params?.url);
+    const url =
+      toOptionalString(params?.Url) ?? toOptionalString(params?.url);
     if (url) {
       return {
         type: "webFetch",
@@ -349,9 +350,7 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
 
       if (stepType === "agent_response" || stepType === "planner_response") {
         const deltas: ThreadDelta[] = [];
-        const assistantStep = state.assistantTextByStep.get(
-          step.step_index,
-        ) ?? {
+        const assistantStep = state.assistantTextByStep.get(step.step_index) ?? {
           text: "",
           providerItemId: JSON.stringify([
             context.threadId,
@@ -476,7 +475,10 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
       const deltas: ThreadDelta[] = [];
       state.turnSeq += 1;
 
-      if (result.conversation_id && result.conversation_id.length > 0) {
+      if (
+        result.conversation_id &&
+        result.conversation_id.length > 0
+      ) {
         deltas.push({
           kind: "thread.identity",
           providerThreadId: result.conversation_id,
@@ -546,12 +548,15 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
       }
       state.assistantTextByStep.clear();
 
-      const deniedActionNames =
-        result.denied_actions?.map((item) => item.display_name) ?? [];
-      const failureMessage =
-        deniedActionNames.length > 0
-          ? `Denied actions in headless mode: ${deniedActionNames.join(", ")}. The permission mode is too restrictive; file writes require accept-edits or another mode that permits writes.${result.error ? ` ${result.error}` : ""}`
-          : result.error;
+      if (result.denied_actions && result.denied_actions.length > 0) {
+        const names = result.denied_actions
+          .map((item) => item.display_name)
+          .join(", ");
+        deltas.push({
+          kind: "provider.warning",
+          summary: `Denied actions in headless mode: ${names}`,
+        });
+      }
 
       const usage = toTokenUsageBreakdown(result.usage);
       if (usage && usage.totalTokens > 0) {
@@ -572,22 +577,23 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
         });
       }
 
-      if (result.status === "ERROR" || deniedActionNames.length > 0) {
+      if (result.status === "ERROR") {
         deltas.push({
           kind: "provider.error",
           message: "Antigravity turn failed",
-          ...(failureMessage ? { detail: failureMessage } : {}),
+          ...(result.error ? { detail: result.error } : {}),
         });
         deltas.push({
           kind: "turn.boundary",
           status: "failed",
-          ...(failureMessage ? { error: { message: failureMessage } } : {}),
+          ...(result.error ? { error: { message: result.error } } : {}),
           claimIfIdle: true,
         });
       } else {
         deltas.push({
           kind: "turn.boundary",
-          status: result.status === "INTERRUPTED" ? "interrupted" : "completed",
+          status:
+            result.status === "INTERRUPTED" ? "interrupted" : "completed",
           claimIfIdle: true,
         });
       }

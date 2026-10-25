@@ -138,58 +138,6 @@ describe("createAgentRuntime input accepted events", () => {
     await runtime.shutdown();
   });
 
-  it("never sends turn/steer to a queue-only bridge or changes its live turn", async () => {
-    const events: ThreadEvent[] = [];
-    const record = createScriptedEchoRequestRecord();
-    const runtime = createScriptedEchoRuntime({
-      runtime: {
-        workspacePath: tmpDir,
-        env: {
-          ...record.env,
-          SCRIPTED_ECHO_OPTIONS: JSON.stringify({ steerMode: "queue" }),
-        },
-        onEvent: (event) => events.push(event),
-      },
-    });
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-      await runtime.runTurn({
-        clientRequestId: "creq_222222222u",
-        threadId: "t1",
-        input: [promptTextInput({ text: "delay:500 active turn" })],
-        options: fullRuntimeOptions,
-      });
-      const { turnId } = await waitForThreadTurnStarted({
-        events,
-        providerId: "fake",
-        runtime,
-        threadId: "t1",
-      });
-      expect(runtime.getSteerMode("t1")).toBe("queue");
-      await expect(
-        runtime.steerTurn({
-          clientRequestId: "creq_23456789ae",
-          threadId: "t1",
-          expectedTurnId: turnId,
-          input: [promptTextInput({ text: "follow up" })],
-          options: fullRuntimeOptions,
-        }),
-      ).rejects.toThrow(/queued delivery/);
-      expect(
-        record.read().filter((request) => request.method === "turn/steer"),
-      ).toEqual([]);
-      expect(runtime.getActiveTurnId("t1")).toBe(turnId);
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
   it("maps a staleTurn steer rejection to a stale steer", async () => {
     const events: ThreadEvent[] = [];
     const record = createScriptedEchoRequestRecord();

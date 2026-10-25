@@ -58,7 +58,6 @@ export type DeferredThreadEventsListener = (
 export interface BridgeProtocolAdapter {
   id: string;
   capabilities: BridgeEnforcedCapabilities;
-  readonly steerMode: BridgeCapabilities["steerMode"];
   readonly approvalEnforcedBy: "runtime" | "provider";
   process: { command: string; args: string[]; env?: Record<string, string> };
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
@@ -208,9 +207,6 @@ export function createBridgeProtocolAdapter(
   const adapter: BridgeProtocolAdapter = {
     id: options.id,
     capabilities,
-    get steerMode() {
-      return handshake.steerMode;
-    },
     get approvalEnforcedBy() {
       return handshake.approvalEnforcedBy;
     },

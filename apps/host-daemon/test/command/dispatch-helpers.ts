@@ -387,7 +387,6 @@ export function createFakeRuntime() {
     listRunningProviders() {
       return state.runningProviders;
     },
-    getSteerMode: () => "inject",
     getActiveTurnId(threadId) {
       return activeTurnsByThreadId.get(threadId) ?? null;
     },

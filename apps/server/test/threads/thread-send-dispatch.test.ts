@@ -2,7 +2,6 @@ import {
   archiveThread,
   getAppSettings,
   updateHost,
-  updateThread,
   getQueuedThreadMessage,
   getThread,
   listEvents,
@@ -44,15 +43,9 @@ import {
   internalAuthHeaders,
   listQueuedThreadCommands,
   reportQueuedCommandError,
-  reportQueuedCommandSuccess,
-  registerTestHostRpcCapture,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
-import {
-  withChildThreadNotificationClock,
-  flushChildThreadNotifications,
-} from "../helpers/child-thread-notification-clock.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -755,158 +748,153 @@ describe("startup queue waits", () => {
     });
   });
 
-  it.each(["inject", null] as const)(
-    "parks a steer until turn/started and then steers it into that turn (initial mode: %s)",
-    async (steerMode) => {
-      await withTestHarness(async (harness) => {
-        const { environment, sessionId, thread } = seedProviderThreadFixture({
-          harness,
-          status: "active",
-          value: 6,
-        });
-        const captureOptions: Parameters<typeof registerTestHostRpcCapture>[1] =
-          { hostId: environment.hostId, sessionId, steerMode };
-        registerTestHostRpcCapture(harness, captureOptions);
-        const pluginInput = textInput("plugin-held lead");
-        const input = textInput("steer when ready");
-        const secondInput = textInput("also steer when ready");
-        const pluginHeld = seedQueuedMessage(harness.deps, {
+  it("parks a steer until turn/started and then steers it into that turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { sessionId, thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 6,
+      });
+      const pluginInput = textInput("plugin-held lead");
+      const input = textInput("steer when ready");
+      const secondInput = textInput("also steer when ready");
+      const pluginHeld = seedQueuedMessage(harness.deps, {
+        content: pluginInput,
+        threadId: thread.id,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "limiter",
+          reason: "At capacity",
+        },
+      });
+      const queueChangedInTransactions: boolean[] = [];
+      const notifyThread = harness.hub.notifyThread.bind(harness.hub);
+      vi.spyOn(harness.hub, "notifyThread").mockImplementation(
+        (threadId, changes, metadata) => {
+          if (changes.includes("queue-changed")) {
+            queueChangedInTransactions.push(harness.db.$client.inTransaction);
+          }
+          notifyThread(threadId, changes, metadata);
+        },
+      );
+
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input,
+            mode: "steer",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+        }),
+      ).resolves.toMatchObject({
+        delivery: "queued",
+        queuedMessage: { waitingOn: { kind: "turn-starting" } },
+      });
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input: secondInput,
+            mode: "auto",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+        }),
+      ).resolves.toMatchObject({
+        delivery: "queued",
+        queuedMessage: { waitingOn: { kind: "turn-starting" } },
+      });
+      expect(queueChangedInTransactions).toEqual([false, false]);
+      const queued = listQueuedThreadMessages(harness.db, thread.id);
+      setQueuedThreadMessageGroupBoundary({
+        db: harness.db,
+        notifier: harness.deps.hub,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: [pluginHeld.id, queued[1]!.id],
+        groupBoundaryQueuedMessageId: queued[1]!.id,
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => ({
+          content: JSON.parse(row.content),
+          waitingOn: JSON.parse(row.waitingOn!),
+        })),
+      ).toEqual([
+        {
           content: pluginInput,
-          threadId: thread.id,
           waitingOn: {
             kind: "plugin",
             pluginId: "limiter",
             reason: "At capacity",
           },
-        });
-        const queueChangedInTransactions: boolean[] = [];
-        const notifyThread = harness.hub.notifyThread.bind(harness.hub);
-        vi.spyOn(harness.hub, "notifyThread").mockImplementation(
-          (threadId, changes, metadata) => {
-            if (changes.includes("queue-changed")) {
-              queueChangedInTransactions.push(harness.db.$client.inTransaction);
-            }
-            notifyThread(threadId, changes, metadata);
-          },
-        );
+        },
+        { content: input, waitingOn: { kind: "turn-starting" } },
+        { content: secondInput, waitingOn: { kind: "turn-starting" } },
+      ]);
+      const busy = seedQueuedMessage(harness.deps, {
+        content: textInput("wait for idle"),
+        threadId: thread.id,
+        waitingOn: { kind: "thread-busy" },
+      });
 
-        await expect(
-          acceptThreadSendRequest(harness.deps, {
-            payload: {
-              input,
-              mode: "steer",
-              model: "gpt-5",
-              permissionMode: "full",
-              reasoningLevel: "medium",
-              serviceTier: "default",
-            },
-            thread,
-          }),
-        ).resolves.toMatchObject({
-          delivery: "queued",
-          queuedMessage: { waitingOn: { kind: "turn-starting" } },
-        });
-        await expect(
-          acceptThreadSendRequest(harness.deps, {
-            payload: {
-              input: secondInput,
-              mode: "auto",
-              model: "gpt-5",
-              permissionMode: "full",
-              reasoningLevel: "medium",
-              serviceTier: "default",
-            },
-            thread,
-          }),
-        ).resolves.toMatchObject({
-          delivery: "queued",
-          queuedMessage: { waitingOn: { kind: "turn-starting" } },
-        });
-        expect(queueChangedInTransactions).toEqual([false, false]);
-        const queued = listQueuedThreadMessages(harness.db, thread.id);
-        setQueuedThreadMessageGroupBoundary({
-          db: harness.db,
-          notifier: harness.deps.hub,
-          threadId: thread.id,
-          expectedGroupedPrefixQueuedMessageIds: [pluginHeld.id, queued[1]!.id],
-          groupBoundaryQueuedMessageId: queued[1]!.id,
-        });
-        expect(
-          listQueuedThreadCommands(harness, "turn.submit", thread.id),
-        ).toHaveLength(0);
-
-        expect(
-          listQueuedThreadMessages(harness.db, thread.id).map((row) => ({
-            content: JSON.parse(row.content),
-            waitingOn: JSON.parse(row.waitingOn!),
-          })),
-        ).toEqual([
-          {
-            content: pluginInput,
-            waitingOn: {
-              kind: "plugin",
-              pluginId: "limiter",
-              reason: "At capacity",
-            },
-          },
-          { content: input, waitingOn: { kind: "turn-starting" } },
-          { content: secondInput, waitingOn: { kind: "turn-starting" } },
-        ]);
-        const busy = seedQueuedMessage(harness.deps, {
-          content: textInput("wait for idle"),
-          threadId: thread.id,
-          waitingOn: { kind: "thread-busy" },
-        });
-
-        captureOptions.steerMode = "inject";
-        const response = await harness.app.request("/internal/session/events", {
-          method: "POST",
-          headers: internalAuthHeaders(harness),
-          body: JSON.stringify({
-            sessionId,
-            eventGroups: groupHostDaemonEvents([
-              {
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: thread.id,
+              event: {
+                type: "turn/started",
                 threadId: thread.id,
-                event: {
-                  type: "turn/started",
-                  threadId: thread.id,
-                  providerThreadId: "provider-send-dispatch-6",
-                  scope: turnScope("turn-ready"),
-                },
+                providerThreadId: "provider-send-dispatch-6",
+                scope: turnScope("turn-ready"),
               },
-            ]),
-          }),
-        });
-        expect(response.status).toBe(200);
+            },
+          ]),
+        }),
+      });
+      expect(response.status).toBe(200);
 
-        await vi.waitFor(() => {
-          expect(
-            listQueuedThreadCommands(harness, "turn.submit", thread.id),
-          ).toHaveLength(2);
-        });
+      await vi.waitFor(() => {
         expect(
           listQueuedThreadCommands(harness, "turn.submit", thread.id),
-        ).toEqual([
-          expect.objectContaining({
-            inputGroups: [pluginInput, input],
-            target: { mode: "auto", expectedTurnId: "turn-ready" },
-          }),
-          expect.objectContaining({
-            input: secondInput,
-            target: { mode: "auto", expectedTurnId: "turn-ready" },
-          }),
-        ]);
-        expect(
-          listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
-        ).toEqual([busy.id]);
-        expect(
-          JSON.parse(
-            listQueuedThreadMessages(harness.db, thread.id)[0]!.waitingOn!,
-          ),
-        ).toEqual({ kind: "thread-busy" });
+        ).toHaveLength(2);
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([
+        expect.objectContaining({
+          inputGroups: [pluginInput, input],
+          target: { mode: "auto", expectedTurnId: "turn-ready" },
+        }),
+        expect.objectContaining({
+          input: secondInput,
+          target: { mode: "auto", expectedTurnId: "turn-ready" },
+        }),
+      ]);
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+      ).toEqual([busy.id]);
+      expect(
+        JSON.parse(
+          listQueuedThreadMessages(harness.db, thread.id)[0]!.waitingOn!,
+        ),
+      ).toEqual({ kind: "thread-busy" });
 
-        vi.spyOn(threadEvents, "getActiveTurnId").mockReturnValueOnce(null);
-        const delivery = acceptThreadSendRequest(harness.deps, {
+      vi.spyOn(threadEvents, "getActiveTurnId").mockReturnValueOnce(null);
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
           payload: {
             input: textInput("send after the wake scan"),
             mode: "steer",
@@ -916,25 +904,10 @@ describe("startup queue waits", () => {
             serviceTier: "default",
           },
           thread,
-        });
-        const command = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "turn.submit" &&
-            command.threadId === thread.id &&
-            command.input.some(
-              (item) =>
-                item.type === "text" &&
-                item.text === "send after the wake scan",
-            ),
-        );
-        await reportQueuedCommandSuccess(harness, command, {
-          trace: { spans: [] },
-        });
-        await expect(delivery).resolves.toEqual({ ok: true, delivery: "sent" });
-      });
-    },
-  );
+        }),
+      ).resolves.toEqual({ ok: true, delivery: "sent" });
+    });
+  });
 
   it("parks a parent system notice with its taxonomy while a turn starts", async () => {
     await withTestHarness(async (harness) => {
@@ -1118,151 +1091,13 @@ describe("startup queue waits", () => {
   });
 });
 
-describe("queue-only bridge delivery", () => {
-  it.each([
-    { mode: "auto", steerMode: "queue", steerModeFailure: false },
-    { mode: "steer", steerMode: "queue", steerModeFailure: false },
-    { mode: "steer-if-active", steerMode: "queue", steerModeFailure: false },
-    { mode: "steer", steerMode: null, steerModeFailure: false },
-    { mode: "steer", steerMode: null, steerModeFailure: true },
-  ] as const)(
-    "queues $mode until the active turn ends (steerMode: $steerMode, failure: $steerModeFailure)",
-    async ({ mode, steerMode, steerModeFailure }) => {
-      await withTestHarness(async (harness) => {
-        const { environment, thread, sessionId } = seedProviderThreadFixture({
-          harness,
-          status: "active",
-          value: 987,
-        });
-        registerTestHostRpcCapture(harness, {
-          hostId: environment.hostId,
-          sessionId,
-          steerMode,
-          steerModeFailure,
-        });
-        seedTurnStarted(harness.deps, {
-          environmentId: environment.id,
-          providerThreadId: "provider-send-dispatch-987",
-          threadId: thread.id,
-          turnId: "turn-active",
-        });
-        const result = await acceptThreadSendRequest(harness.deps, {
-          thread,
-          payload: { input: textInput("next turn"), mode },
-        });
-        expect(result).toMatchObject({
-          delivery: "queued",
-          queuedMessage: { waitingOn: { kind: "thread-busy" } },
-        });
-        expect(
-          listQueuedThreadCommands(harness, "turn.submit", thread.id),
-        ).toEqual([]);
-        expect(getThread(harness.db, thread.id)?.status).toBe("active");
-        await runQueuedMessageDispatch(harness.deps, {
-          kind: "thread-ready",
-          threadId: thread.id,
-        });
-        expect(
-          listQueuedThreadCommands(harness, "turn.submit", thread.id),
-        ).toEqual([]);
-        const response = await harness.app.request("/internal/session/events", {
-          method: "POST",
-          headers: internalAuthHeaders(harness),
-          body: JSON.stringify({
-            sessionId,
-            eventGroups: groupHostDaemonEvents([
-              {
-                threadId: thread.id,
-                event: {
-                  type: "turn/completed",
-                  threadId: thread.id,
-                  providerThreadId: "provider-send-dispatch-987",
-                  scope: turnScope("turn-active"),
-                  status: "completed",
-                },
-              },
-            ]),
-          }),
-        });
-        expect(response.status).toBe(200);
-        const command = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "turn.submit" && command.threadId === thread.id,
-        );
-        expect(command.command).toMatchObject({
-          input: textInput("next turn"),
-          target: { mode: "start" },
-        });
-        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
-      });
-    },
-  );
-});
-
 describe("turn submit failure settlement", () => {
-  it("bounds a stalled delivery acknowledgement without failing the live turn", async () => {
-    await withChildThreadNotificationClock(async (harness) => {
+  it("records a terminal rejection for the failed client request", async () => {
+    await withTestHarness(async (harness) => {
       const { environment, thread } = seedProviderThreadFixture({
         harness,
         status: "active",
-        value: 988,
-      });
-      seedTurnStarted(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "provider-send-dispatch-988",
-        threadId: thread.id,
-        turnId: "turn-active",
-      });
-      const delivery = sendThreadMessage(harness.deps, {
-        environment,
-        payload: {
-          input: textInput("steer without acknowledgement"),
-          mode: "steer",
-        },
-        thread,
-        trigger: "user",
-      });
-      const rejectedDelivery = expect(delivery).rejects.toMatchObject({
-        status: 504,
-        body: {
-          code: "command_timeout",
-          message: expect.stringContaining("Delivery may still complete"),
-        },
-      });
-      await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "turn.submit" && command.threadId === thread.id,
-      );
-      await vi.advanceTimersByTimeAsync(60_000);
-      await rejectedDelivery;
-      expect(getThread(harness.db, thread.id)?.status).toBe("active");
-      expect(threadEvents.getActiveTurnId(harness.deps, thread.id)).toBe(
-        "turn-active",
-      );
-    });
-  });
-
-  it("reports a steer rejection without failing the live child or losing its eventual parent output", async () => {
-    await withChildThreadNotificationClock(async (harness) => {
-      const { environment, thread, sessionId } = seedProviderThreadFixture({
-        harness,
-        status: "active",
         value: 7,
-      });
-      const parent = seedThread(harness.deps, {
-        projectId: thread.projectId,
-        environmentId: environment.id,
-        status: "idle",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "provider-parent",
-        threadId: parent.id,
-      });
-      updateThread(harness.db, harness.hub, thread.id, {
-        parentThreadId: parent.id,
       });
       seedTurnStarted(harness.deps, {
         environmentId: environment.id,
@@ -1274,7 +1109,7 @@ describe("turn submit failure settlement", () => {
       const activeThread = getThread(harness.db, thread.id);
       if (!activeThread) throw new Error("Expected an active thread");
 
-      const delivery = sendThreadMessage(harness.deps, {
+      await sendThreadMessage(harness.deps, {
         environment,
         payload: {
           input: textInput("failed steer"),
@@ -1286,13 +1121,6 @@ describe("turn submit failure settlement", () => {
         },
         thread: activeThread,
         trigger: "user",
-      });
-      const rejectedDelivery = expect(delivery).rejects.toMatchObject({
-        status: 502,
-        body: {
-          code: "provider_rpc_error",
-          message: "No active turn to steer",
-        },
       });
       const queued = await waitForQueuedCommand(
         harness,
@@ -1308,16 +1136,6 @@ describe("turn submit failure settlement", () => {
         errorMessage: "No active turn to steer",
       });
 
-      expect(getThread(harness.db, thread.id)?.status).toBe("active");
-      expect(threadEvents.getActiveTurnId(harness.deps, thread.id)).toBe(
-        "turn-active",
-      );
-      expect(
-        listEvents(harness.db, { threadId: thread.id }).filter(
-          (event) => event.type === "system/error",
-        ),
-      ).toEqual([]);
-      await rejectedDelivery;
       const rejection = listEvents(harness.db, {
         threadId: thread.id,
       }).find((event) => event.type === "client/turn/rejected");
@@ -1327,59 +1145,6 @@ describe("turn submit failure settlement", () => {
         reason: "provider_rpc_error",
         message: "No active turn to steer",
       });
-      await flushChildThreadNotifications();
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", parent.id),
-      ).toEqual([]);
-      const response = await harness.app.request("/internal/session/events", {
-        method: "POST",
-        headers: internalAuthHeaders(harness),
-        body: JSON.stringify({
-          sessionId,
-          eventGroups: groupHostDaemonEvents([
-            {
-              threadId: thread.id,
-              event: {
-                type: "item/completed",
-                threadId: thread.id,
-                providerThreadId: "provider-send-dispatch-7",
-                scope: turnScope("turn-active"),
-                item: {
-                  id: "child-final",
-                  type: "agentMessage",
-                  text: "The original turn finished successfully.",
-                },
-              },
-            },
-            {
-              threadId: thread.id,
-              event: {
-                type: "turn/completed",
-                threadId: thread.id,
-                providerThreadId: "provider-send-dispatch-7",
-                scope: turnScope("turn-active"),
-                status: "completed",
-              },
-            },
-          ]),
-        }),
-      });
-      expect(response.status).toBe(200);
-      await flushChildThreadNotifications();
-      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", parent.id),
-      ).toEqual([
-        expect.objectContaining({
-          input: [
-            expect.objectContaining({
-              text: expect.stringContaining(
-                "The original turn finished successfully.",
-              ),
-            }),
-          ],
-        }),
-      ]);
     });
   });
 
@@ -1400,7 +1165,7 @@ describe("turn submit failure settlement", () => {
       const activeThread = getThread(harness.db, thread.id);
       if (!activeThread) throw new Error("Expected an active thread");
 
-      const delivery = sendThreadMessage(harness.deps, {
+      await sendThreadMessage(harness.deps, {
         environment,
         payload: {
           input: textInput("late failed steer"),
@@ -1412,13 +1177,6 @@ describe("turn submit failure settlement", () => {
         },
         thread: activeThread,
         trigger: "user",
-      });
-      const rejectedDelivery = expect(delivery).rejects.toMatchObject({
-        status: 502,
-        body: {
-          code: "provider_rpc_error",
-          message: "No active turn to steer",
-        },
       });
       const queued = await waitForQueuedCommand(
         harness,
@@ -1447,7 +1205,6 @@ describe("turn submit failure settlement", () => {
         errorMessage: "No active turn to steer",
       });
 
-      await rejectedDelivery;
       const eventTypes = listEvents(harness.db, {
         threadId: thread.id,
       }).map((event) => event.type);
@@ -1472,7 +1229,7 @@ describe("turn submit failure settlement", () => {
       const activeThread = getThread(harness.db, thread.id);
       if (!activeThread) throw new Error("Expected an active thread");
 
-      const delivery = sendThreadMessage(harness.deps, {
+      await sendThreadMessage(harness.deps, {
         environment,
         payload: {
           input: textInput("accepted steer"),
@@ -1484,13 +1241,6 @@ describe("turn submit failure settlement", () => {
         },
         thread: activeThread,
         trigger: "user",
-      });
-      const rejectedDelivery = expect(delivery).rejects.toMatchObject({
-        status: 502,
-        body: {
-          code: "provider_rpc_error",
-          message: "Response arrived after acceptance",
-        },
       });
       const queued = await waitForQueuedCommand(
         harness,
@@ -1516,7 +1266,6 @@ describe("turn submit failure settlement", () => {
         errorMessage: "Response arrived after acceptance",
       });
 
-      await rejectedDelivery;
       const eventTypes = listEvents(harness.db, {
         threadId: thread.id,
       }).map((event) => event.type);

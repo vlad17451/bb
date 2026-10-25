@@ -1293,7 +1293,6 @@ export interface GetLatestCompletedThreadContextClearSequenceArgs {
 
 export interface GetLatestThreadOutputEventRowArgs {
   threadId: string;
-  turnId?: string;
 }
 
 export interface GetLatestThreadSystemErrorEventRowArgs {
@@ -3422,7 +3421,7 @@ export function getLatestThreadOutputEventRow(
       .select(storedEventRowFields)
       .from(events)
       .where(
-        and(args.turnId === undefined ? undefined : eq(events.turnId, args.turnId), sql`${events.threadId} = ${args.threadId} AND (
+        sql`${events.threadId} = ${args.threadId} AND (
         (
           ${events.type} = 'system/manager/user_message'
           AND COALESCE(json_extract(${events.data}, '$.text'), '') <> ''
@@ -3432,7 +3431,7 @@ export function getLatestThreadOutputEventRow(
           AND ${events.itemKind} = 'agentMessage'
           AND COALESCE(json_extract(${events.data}, '$.item.text'), '') <> ''
         )
-      )`),
+      )`,
       )
       .orderBy(desc(events.sequence))
       .limit(1)

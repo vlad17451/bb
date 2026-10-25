@@ -10,60 +10,6 @@ import { normalizeAgyUsage } from "./bridge/provider-maintenance.js";
 import { buildAgyTurnArgs } from "./bridge/session-runner.js";
 
 describe("provider-agy", () => {
-  it.each(["SUCCESS", "ERROR", "INTERRUPTED"])(
-    "fails a %s result with denied actions while preserving final text",
-    (status) => {
-      const translator = createAgyDeltaTranslator();
-      const assembler = createDeltaAssembler({
-        providerId: "agy",
-        entropyPrefix: "denied",
-        textDeltaFlushMs: 0,
-      });
-      assembler.assemble({
-        threadId: "denied",
-        deltas: [{ kind: "turn.open" }],
-      });
-      const events = assembler.assemble({
-        threadId: "denied",
-        deltas: translator.translateEvent(
-          {
-            event: "result",
-            result: {
-              status,
-              response: "Output got mixed; rerun separately.",
-              error: "Provider error",
-              denied_actions: [
-                { display_name: "WriteFile" },
-                { display_name: "EditFile" },
-              ],
-            },
-          },
-          { threadId: "denied", cwd: "/workspace" },
-        ),
-      });
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: "item/completed",
-          item: expect.objectContaining({
-            type: "agentMessage",
-            text: "Output got mixed; rerun separately.",
-          }),
-        }),
-      );
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: "turn/completed",
-          status: "failed",
-          error: expect.objectContaining({
-            message: expect.stringMatching(
-              /WriteFile.*EditFile.*permission mode.*accept-edits/s,
-            ),
-          }),
-        }),
-      );
-    },
-  );
-
   it("normalizes agy /usage and /credits JSON into ProviderUsage windows", () => {
     const rawUsage = {
       conversation_id: "",
@@ -281,11 +227,7 @@ describe("provider-agy", () => {
 
   describe("agent messages", () => {
     const THREAD_ID = "t-1";
-    const ctx = {
-      threadId: THREAD_ID,
-      cwd: "/work",
-      model: "gemini-3.8-flash",
-    };
+    const ctx = { threadId: THREAD_ID, cwd: "/work", model: "gemini-3.8-flash" };
 
     function runTurn(events: readonly unknown[]): string[] {
       const translator = createAgyDeltaTranslator();
@@ -474,48 +416,28 @@ describe("provider-agy", () => {
   it("leaves subagent launches and listings to the workflow panel and keeps other tools", () => {
     const translator = createAgyDeltaTranslator();
     const ctx = { threadId: "t-sub", cwd: "/tmp" };
-    const toolStep = (
-      stepIndex: number,
-      name: string,
-      extra: Record<string, unknown> = {},
-    ) => ({
+    const toolStep = (stepIndex: number, name: string, extra: Record<string, unknown> = {}) => ({
       event: "step_update",
       step_update: {
         conversation_id: "conv-sub",
         step_index: stepIndex,
         state: "DONE",
         step_type: "tool",
-        tool_info: {
-          name,
-          tool_call_id: `call-${String(stepIndex)}`,
-          parameters: {},
-        },
+        tool_info: { name, tool_call_id: `call-${String(stepIndex)}`, parameters: {} },
         ...extra,
       },
     });
 
-    expect(
-      translator.translateEvent(toolStep(1, "invoke_subagent"), ctx),
-    ).toEqual([]);
-    expect(
-      translator.translateEvent(toolStep(2, "manage_subagents"), ctx),
-    ).toEqual([]);
+    expect(translator.translateEvent(toolStep(1, "invoke_subagent"), ctx)).toEqual([]);
+    expect(translator.translateEvent(toolStep(2, "manage_subagents"), ctx)).toEqual([]);
     expect(
       translator.translateEvent(
-        toolStep(3, "invoke_subagent", {
-          subagent_info: {
-            subagents: [
-              { role: "Review: correctness", conversation_id: "child-1" },
-            ],
-          },
-        }),
+        toolStep(3, "invoke_subagent", { subagent_info: { subagents: [{ role: "Review: correctness", conversation_id: "child-1" }] } }),
         ctx,
       ),
     ).toEqual([]);
     expect(
-      translator
-        .translateEvent(toolStep(4, "view_file"), ctx)
-        .map((delta) => delta.kind),
+      translator.translateEvent(toolStep(4, "view_file"), ctx).map((delta) => delta.kind),
     ).toEqual(["item.open", "item.close"]);
   });
 

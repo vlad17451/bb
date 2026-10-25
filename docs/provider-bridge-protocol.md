@@ -72,22 +72,11 @@ including the `[2, 2]` default of a bridge that omits the field — is refused
 at spawn with a legible error.
 
 `steerMode` declares how the bridge delivers `turn/steer` while a turn is live
-(`inject` feeds it into the running model loop; `queue`, the default, requests
-server-side queued delivery). Before dispatching input to an active thread,
-the server reads the live handshake through the daemon's `thread.steer_mode`
-RPC. For `queue`, it uses the existing queued-message path and delivers the
-input after the running turn ends, without sending `turn/steer`. This applies
-to explicit steers, steer-if-active, and automatic active sends. An unavailable
-handshake also defers input through the queue; before a turn ID exists, input
-keeps the `turn-starting` wait and is rechecked when `turn/started` arrives.
-With `inject`, user-initiated
-sends await the delivery acknowledgement for up to 30 seconds; a rejected
-steer is reported to its caller without failing the running turn. An
-acknowledgement timeout does not cancel delivery, so callers should check the
-thread before retrying. Background queue drains dispatch asynchronously with
-the existing command timeout and record delivery failures in the log.
-A steer whose turn is gone is
-dropped on the bridge's `staleTurn` recovery hint.
+(`inject` feeds it into the running model loop; `queue`, the default, holds it
+for the next prompt boundary). It is recorded, but nothing in the runtime,
+server, or clients acts on it yet: the runtime sends `turn/steer` either way,
+and a steer whose turn is gone is dropped on the bridge's `staleTurn` recovery
+hint whatever the mode.
 
 The sessionless `provider/health`, `provider/usage`,
 `provider/installation/status`, and `provider/installation/run` methods are

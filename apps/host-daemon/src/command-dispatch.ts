@@ -602,16 +602,6 @@ const commandHandlers: CommandHandlerMap = {
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
-  "thread.steer_mode": async (command, options) => {
-    const entry = await options.runtimeManager.getOrAwait(
-      command.environmentId,
-    );
-    return {
-      steerMode: entry?.runtime.hasThread(command.threadId)
-        ? entry.runtime.getSteerMode(command.threadId)
-        : null,
-    };
-  },
   "environment.hook.run": runEnvironmentHook,
   "environment.hook.cancel": cancelEnvironmentHook,
   "desktop.browser.list_instances": forwardDesktopBrowserCommand,

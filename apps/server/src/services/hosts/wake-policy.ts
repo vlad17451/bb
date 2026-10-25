@@ -11,7 +11,6 @@ const hostCommandWakePolicy = {
   "thread.rewind.prepare": "work",
   "thread.start": "work",
   "turn.submit": "work",
-  "thread.steer_mode": "never",
   "thread.stop": "never",
   "thread.storage.delete": "never",
   "thread.goal.clear": "never",

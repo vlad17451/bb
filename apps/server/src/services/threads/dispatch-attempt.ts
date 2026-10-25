@@ -1,4 +1,3 @@
-import { callHostOnlineRpc } from "../hosts/online-rpc.js";
 import { requestQueuedMachineReadiness } from "./queued-message-dispatch.js";
 import {
   cancelPreparingMachinePause,
@@ -473,45 +472,6 @@ async function runDispatchAttempt(
         null,
       );
       return;
-    }
-
-    if (
-      thread.status === "active" &&
-      attempt === "join-turn" &&
-      dispatchEnvironment !== null &&
-      dispatchHost !== null
-    ) {
-      const { steerMode } = await callHostOnlineRpc(deps, {
-        hostId: dispatchHost.id,
-        command: {
-          type: "thread.steer_mode",
-          environmentId: dispatchEnvironment.id,
-          threadId: thread.id,
-        },
-        timeoutMs: 10_000,
-      }).catch((error: Error) => {
-        deps.logger.debug(
-          { err: error, threadId: thread.id },
-          "Could not read live steer mode; deferring input",
-        );
-        return { steerMode: null };
-      });
-      const latestThread = getThread(deps.db, thread.id);
-      if (
-        latestThread?.status !== thread.status ||
-        latestThread.archivedAt !== thread.archivedAt ||
-        latestThread.deletedAt !== thread.deletedAt
-      ) {
-        continued.reattemptThread = latestThread;
-        return;
-      }
-      if (
-        steerMode === "queue" ||
-        (steerMode === null && getActiveTurnId(deps, thread.id) !== null)
-      ) {
-        continued.outcome = waitOn({ kind: "thread-busy" }, null);
-        return;
-      }
     }
 
     if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
