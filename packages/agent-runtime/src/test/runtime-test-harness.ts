@@ -73,6 +73,7 @@ export interface ScriptedEchoLaunchScript {
   sessionRestorable?: boolean;
   toolCallThreadIdHint?: string;
   recoveryThreadIdHint?: string;
+  steerMode?: "inject" | "queue";
   approvalEnforcedBy?: "runtime" | "provider";
   identifyProcess?: boolean;
   failStopForThreadIds?: string[];

@@ -604,10 +604,21 @@ describe("message.dispatch hook admission visibility", () => {
         turnId: "turn-host-warm-admission",
       });
 
-      await acceptThreadSendRequest(harness.deps, {
+      const delivery = acceptThreadSendRequest(harness.deps, {
         payload: { input: textInput("a steer"), mode: "steer" },
         thread: getThread(harness.db, thread.id)!,
       });
+      const command = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" &&
+          command.threadId === thread.id &&
+          command.target.mode === "steer",
+      );
+      await reportQueuedCommandSuccess(harness, command, {
+        trace: { spans: [] },
+      });
+      await delivery;
       expect(seen[1]).toEqual([thread.id]);
     });
   });

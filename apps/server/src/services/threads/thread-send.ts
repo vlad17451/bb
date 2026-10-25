@@ -57,6 +57,7 @@ import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
+  runLiveHostCommand,
 } from "../hosts/live-command.js";
 import {
   inactiveHostUnavailableDetails,
@@ -792,17 +793,36 @@ async function sendThreadMessageWithoutContextClear(
     queuedRequest.request.notificationChanges,
     queuedRequest.request.notificationMetadata,
   );
-  startLiveHostCommand(deps, {
+  const liveCommand = {
     command,
     hostId: readyEnvironment.hostId,
-    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: ({ error }) => {
-      deps.logger.warn(
-        { err: error, threadId: thread.id },
-        "Live turn submit command failed",
-      );
-    },
-  });
+    timeoutMs:
+      args.trigger === "user" ? 30_000 : LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+  };
+  if (args.trigger === "user") {
+    try {
+      await runLiveHostCommand(deps, liveCommand);
+    } catch (error) {
+      if (error instanceof ApiError && error.body.code === "command_timeout") {
+        throw new ApiError(
+          error.status,
+          error.body.code,
+          "Timed out waiting for delivery acknowledgement. Delivery may still complete; check the thread before retrying.",
+        );
+      }
+      throw error;
+    }
+  } else {
+    startLiveHostCommand(deps, {
+      ...liveCommand,
+      onError: ({ error }) => {
+        deps.logger.warn(
+          { err: error, threadId: thread.id },
+          "Live turn submit command failed",
+        );
+      },
+    });
+  }
   if (shouldCaptureUserMessageSent) {
     captureUserMessageSentTelemetry(deps, {
       isChildThread: thread.parentThreadId !== null,

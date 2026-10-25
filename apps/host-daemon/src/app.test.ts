@@ -290,6 +290,7 @@ function createFakeRuntime(): AgentRuntime {
     listRunningProviders() {
       return [];
     },
+    getSteerMode: () => "inject",
     getActiveTurnId() {
       return null;
     },

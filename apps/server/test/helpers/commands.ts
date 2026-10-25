@@ -86,6 +86,8 @@ interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
   queueBranchOptions?: boolean;
+  steerMode?: "inject" | "queue" | null;
+  steerModeFailure?: boolean;
   onPluginHostCall?: (
     command: Extract<HostDaemonRpcCommand, { type: "plugin.host.call" }>,
   ) => Promise<HostDaemonOnlineRpcResult<"plugin.host.call">>;
@@ -317,6 +319,31 @@ export function registerTestHostRpcCapture(
         return;
       }
       const command = hostDaemonRpcCommandSchema.parse(message.command);
+      if (command.type === "thread.steer_mode") {
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ...(args.steerModeFailure
+              ? {
+                  ok: false,
+                  errorCode: "provider_unavailable",
+                  errorMessage: "Provider process exited",
+                }
+              : {
+                  ok: true,
+                  result: {
+                    steerMode:
+                      args.steerMode === undefined ? "inject" : args.steerMode,
+                  },
+                }),
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
+
       if (
         command.type === "plugin.host.dispose" ||
         command.type === "plugin.host.cancel"

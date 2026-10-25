@@ -421,6 +421,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("desktop.browser.release_control"),
     onlineRpcResponseSuccessSchemaFor("desktop.browser.list_import_sources"),
     onlineRpcResponseSuccessSchemaFor("desktop.browser.import_cookies"),
+    onlineRpcResponseSuccessSchemaFor("thread.steer_mode"),
     onlineRpcResponseSuccessSchemaFor("host.list_files"),
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
     onlineRpcResponseSuccessSchemaFor("host.mkdir"),

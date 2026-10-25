@@ -2114,6 +2114,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             };
           }
 
+          const providerThreadId = requireProviderThreadId(threadId);
+          if (currentProc.adapter.steerMode === "queue") {
+            throw new Error(
+              "This provider requires queued delivery for active input; use the server queued-message path.",
+            );
+          }
+
           await restartThreadBridgeIfRecommended({
             threadId,
             options: execOpts,
@@ -2141,7 +2148,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
           });
 
-          const providerThreadId = requireProviderThreadId(threadId);
           const adapterCommand: AdapterCommand = {
             type: "turn/steer",
             threadId,
@@ -2483,6 +2489,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
     listRunningProviders() {
       return providerProcesses.listRunningProviders();
+    },
+
+    getSteerMode(threadId) {
+      try {
+        return requireProviderProcessForThread(threadId).adapter.steerMode;
+      } catch {
+        return null;
+      }
     },
 
     getActiveTurnId(threadId) {

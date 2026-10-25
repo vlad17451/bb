@@ -848,6 +848,9 @@ function settleThreadCommandFailure(
         message: args.report.errorMessage,
       },
     });
+    if (args.command.target.mode !== "start") {
+      return emptyCommandResultSideEffects();
+    }
     if (
       args.report.errorCode === COMPETING_TURN_ERROR_CODE &&
       getActiveTurnId(args.deps, thread.id) !== null

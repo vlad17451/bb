@@ -62,6 +62,7 @@ interface BuildChildThreadNeedsAttentionInputArgs {
 }
 
 interface QueueChildThreadTurnNotificationArgs {
+  outputTurnId?: string;
   childThread: ChildThreadNotificationSource;
   parentThreadId: string;
   turnStatus: ThreadEventTurnStatus;
@@ -129,6 +130,10 @@ function childThreadInterruptionCauseText(
     case "manual-stop":
       return "";
   }
+}
+
+function formatStatusSentence(text: string): string {
+  return /[.!?]$/u.test(text) ? text : `${text}.`;
 }
 
 function truncateChildThreadOutput(text: string, limit: number): string {
@@ -204,7 +209,7 @@ function buildSingleChildThreadTurnStatusSegments(
         { kind: "mention", mention: line.mention },
         {
           kind: "text",
-          text: ` ${line.item.failureContext ?? "failed"}.\n\n${CHILD_THREAD_INSPECTION_GUIDANCE}`,
+          text: ` ${formatStatusSentence(line.item.failureContext ?? "failed")}${line.item.terminalOutput?.trim() ? `\n\n${formatChildThreadCompletionOutputExcerpt(line.item.terminalOutput)}` : ""}\n\n${CHILD_THREAD_INSPECTION_GUIDANCE}`,
         },
       ];
     case "interrupted":
@@ -233,7 +238,7 @@ function buildChildThreadBatchStatusLineSegments(
     { kind: "mention", mention: line.mention },
     {
       kind: "text",
-      text: ` ${childThreadTurnStatusLabel(line.item)}${workflowClause}.`,
+      text: ` ${formatStatusSentence(`${childThreadTurnStatusLabel(line.item)}${workflowClause}`)}${line.item.turnStatus === "failed" && line.item.terminalOutput?.trim() ? `\n\n${formatChildThreadCompletionOutputExcerpt(line.item.terminalOutput)}` : ""}`,
     },
   ];
 }
@@ -242,10 +247,13 @@ function getChildThreadCompletionOutput(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueChildThreadTurnNotificationArgs,
 ): string | null {
-  if (args.turnStatus !== "completed") {
+  if (args.turnStatus === "interrupted") {
     return null;
   }
-  return getLastThreadOutput(deps.db, args.childThread.id);
+  if (args.turnStatus === "failed" && args.outputTurnId === undefined) {
+    return null;
+  }
+  return getLastThreadOutput(deps.db, args.childThread.id, args.outputTurnId);
 }
 
 function getChildThreadActiveWorkflowCount(
