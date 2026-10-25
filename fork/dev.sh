@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage="Usage: fork/dev.sh [--serve] [<command> [args...]]
+usage="Usage: fork/dev.sh [--serve] [--detach <name>] [<command> [args...]]
 
 Builds the fork's dev container and runs <command> (default: bash) in it with
 only the repository mounted (at /repo; .git and fork/ read-only). --serve also publishes the dev app and
-server ports on 127.0.0.1, for example: fork/dev.sh --serve pnpm dev"
+server ports on 127.0.0.1, for example: fork/dev.sh --serve pnpm dev
+--detach <name> runs the container in the background under that name; stop it
+with podman stop <name>, which also removes it."
 
 repo_dir=$(cd "$(dirname "$0")/.." && pwd)
 image=localhost/bb-fork-dev
@@ -21,10 +23,19 @@ dev_port_offset() {
 }
 
 serve=false
-case "${1:-}" in
-  -h|--help) echo "$usage"; exit 0 ;;
-  --serve) serve=true; shift ;;
-esac
+detach_name=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) echo "$usage"; exit 0 ;;
+    --serve) serve=true; shift ;;
+    --detach)
+      [ -n "${2:-}" ] || fail "--detach needs a container name"
+      detach_name=$2
+      shift 2
+      ;;
+    *) break ;;
+  esac
+done
 command -v podman >/dev/null || fail "podman is not on PATH"
 [ -f "$repo_dir/pnpm-lock.yaml" ] || fail "no pnpm-lock.yaml in $repo_dir"
 
@@ -40,7 +51,9 @@ run_args=(
   -v "$store_volume:/pnpm-store"
   -w "$container_repo_dir"
 )
-if [ -t 0 ] && [ -t 1 ]; then
+if [ -n "$detach_name" ]; then
+  run_args+=(--detach --name "$detach_name")
+elif [ -t 0 ] && [ -t 1 ]; then
   run_args+=(-it)
 fi
 if $serve; then

@@ -46,6 +46,7 @@ fork/dev.sh
 - The pnpm store lives in the named volume `bb-fork-pnpm-store`.
 - The container runs as `0:0`. Under rootless podman that is the developer's own UID on the host, so files in the repository keep their owner. `--userns keep-id` fails on the owner's host with `crun: write to uid_map`.
 - Before the command starts, the entrypoint adds an nftables egress filter in the container's network namespace: the internet and the DNS servers from `/etc/resolv.conf` are open; private networks, link-local (which includes podman's `host.containers.internal`), CGNAT and the tailnet (`100.64.0.0/10`), multicast and the IPv6 equivalents are rejected. It then drops `CAP_NET_ADMIN`, so nothing in the container can change the filter. Without it, a dependency could reach services on the host or the tailnet, such as an unauthenticated BB published with Tailscale Serve.
+- `--detach <name>` runs the container in the background under that name, for a server that must outlive the shell that started it; `podman stop <name>` stops and removes it.
 - `--serve` publishes the dev app and server ports on `127.0.0.1` only and makes them listen on `0.0.0.0` inside the container. The ports follow upstream's per-checkout scheme for the repository root `/repo` (`resolvePorts` in `packages/config/src/runtime.ts`); the script prints the app URL.
 
 ### Tests and known failures
