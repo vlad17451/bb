@@ -1,0 +1,27 @@
+# Tests that fail in the dev container on a clean fork checkout, checked
+# against HEAD on 2026-10-25. fork/test-baseline.sh reports only failures that
+# are not listed here. "flaky:" entries fail only under load (the whole suite
+# at once) and pass alone; they are ignored whether they pass or fail.
+#
+# The Claude Code cases expect bypassPermissions or allowDangerouslySkipPermissions,
+# which the container's root user does not get; the generator expects git's Z
+# date format; the README copy test expects copying a directory to fail.
+bb-plugin-provider-claude-code: src/bridge/__tests__/bridge.test.ts > bridge > falls back to well-known install locations when PATH discovery fails
+bb-plugin-provider-claude-code: src/bridge/__tests__/bridge.test.ts > bridge > prepares the 'full' sandbox before approving a Plan preset (true, undefined)
+bb-plugin-provider-claude-code: src/bridge/__tests__/bridge.test.ts > bridge > prepares the 'full' sandbox before approving a Plan preset (undefined, undefined)
+bb-plugin-provider-claude-code: src/bridge/__tests__/bridge.test.ts > bridge > refreshes permissions before turn/start and preserves the conversation
+bb-plugin-provider-claude-code: src/bridge/__tests__/bridge.test.ts > bridge > refreshes permissions before turn/steer and preserves the conversation
+@bb/provider-bridge-protocol: src/contract-tests/permission-changes.test.ts > cross-provider permission changes: Claude > permission contract: 'accept-edits' -> 'full' on 'turn/start'
+@bb/provider-bridge-protocol: src/contract-tests/permission-changes.test.ts > cross-provider permission changes: Claude > permission contract: 'accept-edits' -> 'full' on 'turn/steer'
+@bb/provider-bridge-protocol: src/contract-tests/permission-changes.test.ts > cross-provider permission changes: Claude > permission contract: 'auto' -> 'full' on 'turn/start'
+@bb/provider-bridge-protocol: src/contract-tests/permission-changes.test.ts > cross-provider permission changes: Claude > permission contract: 'auto' -> 'full' on 'turn/steer'
+@bb/provider-bridge-protocol: src/contract-tests/permission-changes.test.ts > cross-provider permission changes: Claude > permission contract: 'full' -> 'accept-edits' on 'turn/start'
+@bb/provider-bridge-protocol: src/contract-tests/permission-changes.test.ts > cross-provider permission changes: Claude > permission contract: 'full' -> 'accept-edits' on 'turn/steer'
+@bb/provider-bridge-protocol: src/contract-tests/permission-changes.test.ts > cross-provider permission changes: Claude > permission contract: 'full' -> 'auto' on 'turn/start'
+@bb/provider-bridge-protocol: src/contract-tests/permission-changes.test.ts > cross-provider permission changes: Claude > permission contract: 'full' -> 'auto' on 'turn/steer'
+@bb/server: test/app/bb-app-artifact.test.ts > bb-app artifact service (desktop packaging) > propagates README copy failures other than a missing file
+@bb/server: test/services/plugin-catalog/bb-official-generator.test.ts > bb-official marketplace generator > uses the first and last committer dates from plugin history
+flaky: @bb/app: src/components/commands/CommandPalette.cold-open.test.tsx > stays usable before its body downloads on first open and keeps typed text
+flaky: @bb/app: src/components/commands/CommandPalette.test.tsx > CommandPalette > runs an available shortcut from commands even with no matches, after closing and restoring focus
+flaky: @bb/server: test/services/plugins/plugin-install-jobs.test.ts > plugin install routes > answers a respond-async install with a job the list reports through completion
+flaky: @bb/server: test/services/threads/timeline-in-turn-window.test.ts > in-turn timeline windows > expands each delegated byte-budget slice with realistic parent ordering

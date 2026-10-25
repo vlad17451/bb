@@ -48,6 +48,12 @@ fork/dev.sh
 - Before the command starts, the entrypoint adds an nftables egress filter in the container's network namespace: the internet and the DNS servers from `/etc/resolv.conf` are open; private networks, link-local (which includes podman's `host.containers.internal`), CGNAT and the tailnet (`100.64.0.0/10`), multicast and the IPv6 equivalents are rejected. It then drops `CAP_NET_ADMIN`, so nothing in the container can change the filter. Without it, a dependency could reach services on the host or the tailnet, such as an unauthenticated BB published with Tailscale Serve.
 - `--serve` publishes the dev app and server ports on `127.0.0.1` only and makes them listen on `0.0.0.0` inside the container. The ports follow upstream's per-checkout scheme for the repository root `/repo` (`resolvePorts` in `packages/config/src/runtime.ts`); the script prints the app URL.
 
+### Tests and known failures
+
+Some tests fail in the dev container on a clean checkout (the Claude Code cases need a non-root user, one test expects another git date format). `fork/test-baseline.sh [--filter=<package> ...]`, run on the host, runs `turbo test` in the container and compares the failures with `fork/known-test-failures.txt`: it prints only new failures (exit 1) and listed failures that now pass. Keep that list to failures checked on a clean checkout.
+
+A change that adds a value to a closed list (permission modes, scopes, capabilities) follows [closed-enums.md](closed-enums.md).
+
 ### Testing a provider bridge
 
 `plugins/provider-agy/src/bridge/bridge.test.ts` is the template for testing a bridge through its JSON-RPC surface: `experimental_createBridgeJsonRpcTestHarness(handleLine)` from `@get-bb/plugin-sdk/provider-bridge/testing` sends requests and captures the bridge's output, a shell script stands in for the provider CLI (agy reads `BB_AGY_EXECUTABLE`), and `turn/start` needs the `providerThreadId` that `thread/start` returned plus full execution `options`. Run it with `fork/dev.sh sh -c "cd plugins/provider-agy && pnpm exec vitest run"`.
