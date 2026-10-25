@@ -411,6 +411,66 @@ describe("provider-agy", () => {
     it("uses the result response when nothing was streamed", () => {
       expect(runTurn([resultEvent("Done.\n")])).toEqual(["Done."]);
     });
+
+    it.each([
+      { step: "Done.", response: "Done.", expected: "Done.\n\n" },
+      {
+        step: "Partial",
+        response: "Partial response.",
+        expected: "Partial response.\n\n",
+      },
+      { step: "Earlier", response: "Final.", expected: "Final.\n\n" },
+      { step: "Done.", response: "", expected: "Done.\n\n" },
+      { step: "", response: "Done.", expected: "Done.\n\n" },
+      { step: "", response: "", expected: "" },
+    ])(
+      "includes denied actions in the final message for $step / $response",
+      ({ step, response, expected }) => {
+        const events = [
+          ...(step ? [responseStep(1, "ACTIVE", step)] : []),
+          {
+            event: "result",
+            result: {
+              status: "SUCCESS",
+              response,
+              denied_actions: [{ display_name: "WriteFile" }],
+            },
+          },
+        ];
+        const messages = runTurn(events);
+        expect(messages.at(-1)).toBe(
+          `${expected}Denied in headless mode: WriteFile. Spawn the thread with --permission-mode accept-edits to allow file writes.`,
+        );
+        expect(messages).toHaveLength(step && response === "Final." ? 2 : 1);
+        const deltas = createAgyDeltaTranslator().translateEvent(
+          events.at(-1),
+          ctx,
+        );
+        expect(deltas).toContainEqual({
+          kind: "provider.warning",
+          summary: "Denied actions in headless mode: WriteFile",
+        });
+        expect(deltas).toContainEqual({
+          kind: "turn.boundary",
+          status: "completed",
+          claimIfIdle: true,
+        });
+      },
+    );
+
+    it("does not suggest file-write permissions for other denied actions", () => {
+      expect(
+        runTurn([
+          {
+            event: "result",
+            result: {
+              status: "SUCCESS",
+              denied_actions: [{ display_name: "RunCommand" }],
+            },
+          },
+        ]),
+      ).toEqual(["Denied in headless mode: RunCommand."]);
+    });
   });
 
   it("leaves subagent launches and listings to the workflow panel and keeps other tools", () => {

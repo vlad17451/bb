@@ -167,6 +167,8 @@ interface AgyThreadSession {
   envVars?: Record<string, string>;
   activeTurn: AgyRunningTurn | null;
   previousTurnFinished: Promise<void>;
+  pendingTurns: number;
+  queueGeneration: number;
 }
 
 const { send, sendResult, sendError } =
@@ -256,6 +258,8 @@ function startOrResumeSession(
     envVars: params.options.envVars,
     activeTurn: null,
     previousTurnFinished: Promise.resolve(),
+    pendingTurns: 0,
+    queueGeneration: 0,
   };
   sessions.set(params.threadId, session);
   deltaTranslator.resetThread(params.threadId);
@@ -267,6 +271,7 @@ function startOrResumeSession(
 async function handleTurnStart(
   id: string | number,
   params: z.infer<typeof turnStartParamsSchema>,
+  queued = false,
 ): Promise<void> {
   const session = sessions.get(params.threadId);
   if (!session) {
@@ -280,11 +285,25 @@ async function handleTurnStart(
   }
 
   const previousTurnFinished = session.previousTurnFinished;
+  const queueGeneration = session.queueGeneration;
+  session.pendingTurns += 1;
   let finishThisTurn: () => void = () => undefined;
   session.previousTurnFinished = new Promise<void>((resolve) => {
-    finishThisTurn = resolve;
+    finishThisTurn = () => {
+      session.pendingTurns -= 1;
+      resolve();
+    };
   });
+  if (queued) sendResult(id, { threadId: params.threadId });
   await previousTurnFinished;
+  if (
+    queued &&
+    (session.queueGeneration !== queueGeneration ||
+      sessions.get(params.threadId) !== session)
+  ) {
+    finishThisTurn();
+    return;
+  }
 
   if (params.options.model !== undefined) {
     session.model = params.options.model;
@@ -372,15 +391,19 @@ async function handleTurnStart(
       }
       finishThisTurn();
     });
-    sendResult(id, { threadId: params.threadId });
+    if (!queued) sendResult(id, { threadId: params.threadId });
   } catch (error) {
     clearInterval(subagentPoll);
     finishThisTurn();
-    sendError(
-      id,
-      -32000,
-      error instanceof Error ? error.message : String(error),
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (queued) {
+      sendThreadDeltas(params.threadId, [
+        { kind: "provider.error", message },
+        { kind: "turn.boundary", status: "failed", error: { message } },
+      ]);
+    } else {
+      sendError(id, -32000, message);
+    }
   }
 }
 
@@ -389,6 +412,7 @@ async function handleThreadStop(
   params: z.infer<typeof threadStopParamsSchema>,
 ): Promise<void> {
   const session = sessions.get(params.threadId);
+  if (session) session.queueGeneration += 1;
   if (session?.activeTurn) {
     session.activeTurn.cancel();
     await session.activeTurn.done.catch(() => undefined);
@@ -461,6 +485,10 @@ async function handleRequest(
       await handleTurnStart(request.id, request.params);
       break;
     case "turn/steer":
+      if ((sessions.get(request.params.threadId)?.pendingTurns ?? 0) > 0) {
+        await handleTurnStart(request.id, request.params, true);
+        break;
+      }
       sendError(
         request.id,
         -32000,
@@ -472,6 +500,7 @@ async function handleRequest(
       break;
     case "thread/discard": {
       const session = sessions.get(request.params.threadId);
+      if (session) session.queueGeneration += 1;
       if (session?.activeTurn) {
         session.activeTurn.cancel();
       }
@@ -511,6 +540,7 @@ export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 async function shutdownGracefully(): Promise<void> {
   const pending: Promise<void>[] = [];
   for (const session of sessions.values()) {
+    session.queueGeneration += 1;
     if (session.activeTurn) {
       session.activeTurn.cancel();
       pending.push(session.activeTurn.done.catch(() => undefined));

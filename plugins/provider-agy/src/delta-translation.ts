@@ -556,6 +556,30 @@ export function createAgyDeltaTranslator(): AgyDeltaTranslator {
           kind: "provider.warning",
           summary: `Denied actions in headless mode: ${names}`,
         });
+        const permissionHint = result.denied_actions.some(
+          ({ display_name }) =>
+            display_name === "WriteFile" || display_name === "EditFile",
+        )
+          ? " Spawn the thread with --permission-mode accept-edits to allow file writes."
+          : "";
+        const deniedText = `Denied in headless mode: ${names}.${permissionHint}`;
+        const finalMessage = [...deltas]
+          .reverse()
+          .find(
+            (delta) =>
+              delta.kind === "item.textClose" &&
+              delta.channel === "agentMessage",
+          );
+        if (finalMessage?.kind === "item.textClose") {
+          finalMessage.text = `${finalMessage.text}\n\n${deniedText}`;
+        } else {
+          deltas.push({
+            kind: "item.textClose",
+            key: { channel: ASSISTANT_STREAM_KEY },
+            channel: "agentMessage",
+            text: deniedText,
+          });
+        }
       }
 
       const usage = toTokenUsageBreakdown(result.usage);

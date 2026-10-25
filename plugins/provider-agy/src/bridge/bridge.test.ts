@@ -48,7 +48,8 @@ describe("provider-agy bridge", () => {
       [
         "#!/bin/sh",
         `echo "start $*" >> "${logPath}"`,
-        "cat > /dev/null",
+        `cat >> "${logPath}.inputs"`,
+        `while [ -f "${logPath}.blocked" ]; do sleep 0.02; done`,
         "sleep 0.3",
         `echo '{"event":"result","result":{"conversation_id":"conv-1","status":"SUCCESS","response":"done"}}'`,
         `echo end >> "${logPath}"`,
@@ -60,7 +61,19 @@ describe("provider-agy bridge", () => {
     bridge = createBridgeJsonRpcTestHarness(handleLine);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    bridge.sendRequest("cleanup-stop", "thread/stop", {
+      threadId: THREAD_ID,
+      providerThreadId: "conv-1",
+      intent: "interrupt",
+      activeTurnId: null,
+    });
+    await bridge.waitForResponse("cleanup-stop");
+    bridge.sendRequest("cleanup-discard", "thread/discard", {
+      threadId: THREAD_ID,
+      providerThreadId: "conv-1",
+    });
+    await bridge.waitForResponse("cleanup-discard");
     bridge.restore();
     delete process.env.BB_AGY_EXECUTABLE;
     rmSync(workDir, { recursive: true, force: true });
@@ -123,4 +136,84 @@ describe("provider-agy bridge", () => {
     expect(lines[0]).not.toContain("--conversation");
     expect(lines[2]).toContain("--conversation conv-1");
   });
+
+  it.each([
+    { steers: ["second"], stop: false },
+    { steers: ["second", "third"], stop: false },
+    { steers: ["second", "third"], stop: true },
+  ])(
+    "queues $steers in order after the active turn (stop: $stop)",
+    async ({ steers, stop }) => {
+      writeFileSync(`${logPath}.blocked`, "");
+      bridge.sendRequest(1, "thread/start", {
+        threadId: THREAD_ID,
+        cwd: workDir,
+        options: OPTIONS,
+        instructionMode: "append",
+      });
+      const { providerThreadId } = threadStartResultSchema.parse(
+        (await bridge.waitForResponse(1)).result,
+      );
+      bridge.sendRequest(2, "turn/start", {
+        threadId: THREAD_ID,
+        providerThreadId,
+        input: promptInput("first"),
+        clientRequestId: "creq_23456789ab",
+        options: OPTIONS,
+      });
+      expect((await bridge.waitForResponse(2)).error).toBeUndefined();
+      await waitForLogLines(logPath, 1);
+
+      for (const [index, text] of steers.entries()) {
+        const id = 3 + index;
+        bridge.sendRequest(id, "turn/steer", {
+          threadId: THREAD_ID,
+          providerThreadId,
+          expectedTurnId: "turn-1",
+          input: promptInput(text),
+          clientRequestId: `creq_23456789a${index + 2}`,
+          options: OPTIONS,
+        });
+        expect((await bridge.waitForResponse(id)).error).toBeUndefined();
+      }
+      expect(readFileSync(logPath, "utf8").trim().split("\n")).toHaveLength(1);
+      if (stop) {
+        bridge.sendRequest(10, "thread/stop", {
+          threadId: THREAD_ID,
+          providerThreadId,
+          intent: "interrupt",
+          activeTurnId: "turn-1",
+        });
+        expect((await bridge.waitForResponse(10)).error).toBeUndefined();
+        await bridge.flushWork();
+        expect(readFileSync(logPath, "utf8").trim().split("\n")).toHaveLength(
+          1,
+        );
+        return;
+      }
+      rmSync(`${logPath}.blocked`);
+
+      const lines = await waitForLogLines(logPath, 2 * (1 + steers.length));
+      expect(lines.map((line) => line.split(" ")[0])).toEqual([
+        "start",
+        "end",
+        ...steers.flatMap(() => ["start", "end"]),
+      ]);
+      for (const line of lines
+        .filter((line) => line.startsWith("start"))
+        .slice(1)) {
+        expect(line).toContain("--conversation conv-1");
+      }
+      const inputs = readFileSync(`${logPath}.inputs`, "utf8")
+        .trim()
+        .split("\n")
+        .map(
+          (line) =>
+            z
+              .object({ message: z.object({ content: z.string() }) })
+              .parse(JSON.parse(line)).message.content,
+        );
+      expect(inputs).toEqual(["test\n\nfirst", ...steers]);
+    },
+  );
 });
