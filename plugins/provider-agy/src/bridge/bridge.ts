@@ -41,6 +41,12 @@ import {
 } from "./provider-maintenance.js";
 import { startAgyTurn, type AgyRunningTurn } from "./session-runner.js";
 import { extractAgyPromptText } from "./turn-input.js";
+import {
+  agyBrainRoot,
+  createAgySubagentWorkflowTracker,
+} from "../subagent-workflow.js";
+
+const SUBAGENT_POLL_INTERVAL_MS = 1500;
 
 const agyCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -308,6 +314,19 @@ async function handleTurnStart(
     { kind: "input.accepted", clientRequestId: params.clientRequestId },
   ]);
 
+  const subagentWorkflow = createAgySubagentWorkflowTracker({
+    itemId: `subagents-${randomUUID()}`,
+    turnStartedAt: Date.now(),
+    fallbackModel: session.model ?? "agy",
+    brainRoot: agyBrainRoot(),
+  });
+  const subagentPoll = setInterval(() => {
+    sendThreadDeltas(
+      params.threadId,
+      subagentWorkflow.poll(session.conversationId),
+    );
+  }, SUBAGENT_POLL_INTERVAL_MS);
+
   try {
     const runningTurn = await startAgyTurn({
       threadId: params.threadId,
@@ -334,11 +353,20 @@ async function handleTurnStart(
             sendThreadIdentity(params.threadId, delta.providerThreadId);
           }
         }
+        const turnEnd = deltas.find((delta) => delta.kind === "turn.boundary");
+        if (turnEnd !== undefined) {
+          clearInterval(subagentPoll);
+          sendThreadDeltas(
+            params.threadId,
+            subagentWorkflow.finish(session.conversationId, turnEnd.status),
+          );
+        }
         sendThreadDeltas(params.threadId, deltas);
       },
     });
     session.activeTurn = runningTurn;
     void runningTurn.done.catch(() => undefined).finally(() => {
+      clearInterval(subagentPoll);
       if (session.activeTurn === runningTurn) {
         session.activeTurn = null;
       }
@@ -346,6 +374,7 @@ async function handleTurnStart(
     });
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
+    clearInterval(subagentPoll);
     finishThisTurn();
     sendError(
       id,
