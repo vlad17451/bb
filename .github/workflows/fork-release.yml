@@ -74,7 +74,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build, typecheck, and test
-        run: pnpm exec turbo run build typecheck test --filter=bb-app --filter=@bb/config --filter=@bb/server --filter=@bb/shared-ui --filter=@bb/app --output-logs=new-only
+        run: pnpm exec turbo run build typecheck test --filter=bb-app --filter=@bb/config --filter=@bb/server --filter=@bb/shared-ui --filter=@bb/app --filter=bb-plugin-provider-agy --filter=bb-plugin-provider-codex --output-logs=new-only
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --force --output-logs=new-only
