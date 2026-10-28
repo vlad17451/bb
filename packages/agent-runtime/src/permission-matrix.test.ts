@@ -38,7 +38,6 @@ const POLICY_KEYS = [
   "auto/ask",
   "auto/deny",
   "full/-",
-  "read-only/-",
 ] as const;
 type PolicyKey = (typeof POLICY_KEYS)[number];
 
@@ -162,26 +161,6 @@ const EXPECTED = {
   "full/-|plan|runtime|deny-unavailable": "forward",
   "full/-|plan|provider|deny-available": "forward",
   "full/-|plan|provider|deny-unavailable": "forward",
-  "read-only/-|tool_use|runtime|deny-available": "forward",
-  "read-only/-|tool_use|runtime|deny-unavailable": "forward",
-  "read-only/-|tool_use|provider|deny-available": "forward",
-  "read-only/-|tool_use|provider|deny-unavailable": "forward",
-  "read-only/-|command|runtime|deny-available": "forward",
-  "read-only/-|command|runtime|deny-unavailable": "forward",
-  "read-only/-|command|provider|deny-available": "forward",
-  "read-only/-|command|provider|deny-unavailable": "forward",
-  "read-only/-|file_change|runtime|deny-available": "forward",
-  "read-only/-|file_change|runtime|deny-unavailable": "forward",
-  "read-only/-|file_change|provider|deny-available": "forward",
-  "read-only/-|file_change|provider|deny-unavailable": "forward",
-  "read-only/-|permission_grant|runtime|deny-available": "forward",
-  "read-only/-|permission_grant|runtime|deny-unavailable": "forward",
-  "read-only/-|permission_grant|provider|deny-available": "forward",
-  "read-only/-|permission_grant|provider|deny-unavailable": "forward",
-  "read-only/-|plan|runtime|deny-available": "forward",
-  "read-only/-|plan|runtime|deny-unavailable": "forward",
-  "read-only/-|plan|provider|deny-available": "forward",
-  "read-only/-|plan|provider|deny-unavailable": "forward",
 } satisfies Record<CellKey, Outcome>;
 
 type SameUnion<A, B> = [A] extends [B]
@@ -233,13 +212,6 @@ function policyFor(key: PolicyKey): RuntimePermissionPolicy {
       return {
         permissionMode: "full",
         permissionScope: "full",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      };
-    case "read-only/-":
-      return {
-        permissionMode: "read-only",
-        permissionScope: "read-only",
         approvalReviewer: null,
         permissionEscalation: null,
       };
@@ -499,20 +471,15 @@ describe("permission decision matrix", () => {
       bridgeCapabilitiesSchema.shape.approvalEnforcedBy.def.innerType.options,
     ).toEqual([...ENFORCERS]);
     expect(permissionEscalationValues).toEqual(["ask", "deny"]);
-    expect(permissionModeValues).toEqual([
-      "read-only",
-      "accept-edits",
-      "auto",
-      "full",
-    ]);
-    expect(runtimePermissionPolicySchema.options).toHaveLength(4);
+    expect(permissionModeValues).toEqual(["accept-edits", "auto", "full"]);
+    expect(runtimePermissionPolicySchema.options).toHaveLength(3);
     expect(Object.keys(EXPECTED)).toHaveLength(
       POLICY_KEYS.length *
         SUBJECT_KINDS.length *
         ENFORCERS.length *
         DENY_AVAILABILITY.length,
     );
-    expect(CELLS).toHaveLength(120);
+    expect(CELLS).toHaveLength(100);
   });
 
   it("pins the bridge-kit predicate: only escalation=deny auto-denies", () => {

@@ -242,6 +242,11 @@ const MIGRATIONS = [
     ALTER TABLE presets DROP COLUMN service_tier;
     ALTER TABLE presets RENAME COLUMN service_tier_open TO service_tier;
   `,
+  `
+    UPDATE presets
+    SET permission_mode = 'auto'
+    WHERE permission_mode = 'read-only';
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {

@@ -9,12 +9,6 @@ export interface PermissionModeOption {
 
 export const PERMISSION_MODE_OPTIONS: PermissionModeOption[] = [
   {
-    value: "read-only",
-    label: "Read Only",
-    description:
-      "Reads files and runs commands in a read-only sandbox. Nothing can be written.",
-  },
-  {
     value: "accept-edits",
     label: "Accept Edits",
     description:

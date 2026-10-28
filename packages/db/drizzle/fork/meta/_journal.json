@@ -8,6 +8,13 @@
       "when": 1792010323041,
       "tag": "0000_notify_parent_on_turn_end",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793138400000,
+      "tag": "0001_restore_upstream_permission_modes",
+      "breakpoints": true
     }
   ]
 }

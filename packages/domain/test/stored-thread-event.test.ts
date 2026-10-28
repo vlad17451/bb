@@ -99,7 +99,7 @@ describe("parseStoredThreadEvent", () => {
     expect(parse({})).toMatchObject({ initiator: "system" });
   });
 
-  it.each(["workspace-write", "readonly"] as const)(
+  it.each(["workspace-write", "readonly", "read-only"] as const)(
     "preserves the legacy %s mode on stored history",
     (permissionMode) => {
       const event = parseStoredThreadEvent({

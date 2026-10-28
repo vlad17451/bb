@@ -1141,7 +1141,7 @@ describe("automations server plugin harness", () => {
     ]);
     expect(invalidPermissionMode.exitCode).toBe(1);
     expect(invalidPermissionMode.stderr).toContain(
-      "invalid value 'write' for --permission-mode. Expected one of: read-only, accept-edits, auto, full",
+      "invalid value 'write' for --permission-mode. Expected one of: accept-edits, auto, full",
     );
 
     await harness.dispose();

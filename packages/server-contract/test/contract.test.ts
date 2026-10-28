@@ -377,11 +377,10 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Lifecycle ownership is explicitly assigned at creation; omission creates an independent thread. Parent turn outcome notifications default to true when omitted.",
+      "Lifecycle ownership is explicitly assigned at creation; omission creates an independent thread.",
     fields: [
       "createThreadRequestSchema.lifecycleOwnerThreadId",
       "forkThreadRequestSchema.lifecycleOwnerThreadId",
-      "createThreadRequestSchema.notifyParentOnTurnEnd",
     ],
   },
   {
@@ -1271,7 +1270,6 @@ describe("server-contract canonical schemas", () => {
           status: "idle",
           parentThreadId: null,
           sourceThreadId: null,
-          notifyParentOnTurnEnd: true,
           lifecycleOwnerThreadId: null,
           originKind: null,
           originPluginId: null,
@@ -1308,7 +1306,6 @@ describe("server-contract canonical schemas", () => {
     ).toMatchObject([
       {
         id: "thr_123",
-        notifyParentOnTurnEnd: true,
         lifecycleOwnerThreadId: null,
         hasPendingInteraction: true,
         environmentHostId: "host_123",

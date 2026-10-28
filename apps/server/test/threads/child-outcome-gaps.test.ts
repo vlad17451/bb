@@ -28,7 +28,6 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 function seedParentAndChild(
   harness: TestAppHarness,
   childStatus: "active" | "starting" | "idle",
-  notifyParentOnTurnEnd = true,
 ) {
   const {
     project,
@@ -45,7 +44,6 @@ function seedParentAndChild(
     projectId: project.id,
     environmentId: environment.id,
     parentThreadId: parent.id,
-    notifyParentOnTurnEnd,
     status: childStatus,
     title: "Worker child",
   });
@@ -62,50 +60,6 @@ function parentSystemRequests(harness: TestAppHarness, parentThreadId: string) {
 afterEach(() => vi.useRealTimers());
 
 describe("child outcomes without provider completion", () => {
-  it.each([true, false])(
-    "respects notifyParentOnTurnEnd=%s for a completed turn",
-    async (notifyParentOnTurnEnd) => {
-      await withTestHarness(async (harness) => {
-        const { parent, child, environment, session } = seedParentAndChild(
-          harness,
-          "active",
-          notifyParentOnTurnEnd,
-        );
-        seedTurnStarted(harness.deps, {
-          environmentId: environment.id,
-          threadId: child.id,
-          turnId: "child-turn",
-        });
-
-        vi.useFakeTimers();
-        const response = await harness.app.request("/internal/session/events", {
-          method: "POST",
-          headers: internalAuthHeaders(harness),
-          body: JSON.stringify({
-            sessionId: session.id,
-            eventGroups: groupHostDaemonEvents([
-              {
-                threadId: child.id,
-                event: {
-                  type: "turn/completed",
-                  threadId: child.id,
-                  providerThreadId: "provider-child-turn",
-                  scope: turnScope("child-turn"),
-                  status: "completed",
-                },
-              },
-            ]),
-          }),
-        });
-        expect(response.status).toBe(200);
-        await vi.advanceTimersByTimeAsync(2_000);
-        expect(parentSystemRequests(harness, parent.id)).toHaveLength(
-          notifyParentOnTurnEnd ? 1 : 0,
-        );
-      });
-    },
-  );
-
   it("keeps a manual Stop silent when it synthesizes an open turn interruption", async () => {
     await withTestHarness(async (harness) => {
       const { parent, child, environment } = seedParentAndChild(

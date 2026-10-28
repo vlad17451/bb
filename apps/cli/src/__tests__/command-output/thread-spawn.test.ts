@@ -528,7 +528,7 @@ describe("bb thread spawn command output", () => {
     ).rejects.toThrow("process.exit:1");
 
     expect(console.error).toHaveBeenCalledWith(
-      "Error: Invalid permission mode 'unsafe'. Expected read-only, accept-edits, auto, or full.",
+      "Error: Invalid permission mode 'unsafe'. Expected accept-edits, auto, or full.",
     );
   });
 
@@ -613,74 +613,6 @@ describe("bb thread spawn command output", () => {
 
     expect(collectLogLines(vi.mocked(console.error))).toContain(
       "Error: Failed to create thread: HTTP 503: Unable to load codex models to resolve the default",
-    );
-  });
-
-  it.each(["--parent-self", "--parent-thread"])(
-    "bb thread spawn forwards --no-notify-parent with %s",
-    async (parentFlag) => {
-      vi.stubEnv("BB_THREAD_ID", "thread-parent");
-      const post = vi.fn(async () =>
-        fixtures.makeThread({
-          id: "thread-muted-child",
-          projectId: "proj-1",
-          providerId: "codex",
-          parentThreadId: "thread-parent",
-          notifyParentOnTurnEnd: false,
-        }),
-      );
-      stubServerApi({ "v1.threads.$post": post });
-
-      await runCommand(
-        [
-          "thread",
-          "spawn",
-          "--project",
-          "proj-1",
-          "--prompt",
-          "hello",
-          parentFlag,
-          ...(parentFlag === "--parent-thread" ? ["thread-parent"] : []),
-          "--no-notify-parent",
-        ],
-        register,
-      );
-
-      expect(post).toHaveBeenCalledWith({
-        json: expect.objectContaining({
-          parentThreadId: "thread-parent",
-          notifyParentOnTurnEnd: false,
-        }),
-      });
-      expect(collectLogLines(vi.mocked(console.log))).not.toContain(
-        "You will be notified when this thread is done.",
-      );
-    },
-  );
-
-  it("bb thread spawn rejects --no-notify-parent without an explicit parent", async () => {
-    vi.stubEnv("BB_THREAD_ID", "thread-context");
-    const post = vi.fn();
-    stubServerApi({ "v1.threads.$post": post });
-
-    await expect(
-      runCommand(
-        [
-          "thread",
-          "spawn",
-          "--project",
-          "proj-1",
-          "--prompt",
-          "hello",
-          "--no-notify-parent",
-        ],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(post).not.toHaveBeenCalled();
-    expect(collectLogLines(vi.mocked(console.error))).toContain(
-      "Error: --no-notify-parent requires --parent-self or --parent-thread and cannot be combined with --origin-kind.",
     );
   });
 

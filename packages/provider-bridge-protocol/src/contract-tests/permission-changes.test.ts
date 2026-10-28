@@ -217,7 +217,7 @@ describe("cross-provider permission changes: Codex", () => {
           .parse(JSON.parse(line)),
       );
   }
-  it.each(permissionChangeCases(["read-only", "accept-edits", "auto", "full"]))(
+  it.each(permissionChangeCases(["accept-edits", "auto", "full"]))(
     "permission contract: $before -> $after on $method",
     async (scenario) => {
       let providerThreadId = "";
@@ -263,11 +263,7 @@ describe("cross-provider permission changes: Codex", () => {
             const params = z
               .object({
                 sandboxPolicy: z.object({
-                  type: z.enum([
-                    "readOnly",
-                    "workspaceWrite",
-                    "dangerFullAccess",
-                  ]),
+                  type: z.enum(["workspaceWrite", "dangerFullAccess"]),
                 }),
                 approvalPolicy: z.enum(["never", "on-request"]),
                 approvalsReviewer: z.enum(["user", "auto_review"]),
@@ -277,10 +273,9 @@ describe("cross-provider permission changes: Codex", () => {
                   .filter((request) => request.method === "turn/start")
                   .at(-1)?.params,
               );
-            const isReadOnly = params.sandboxPolicy.type === "readOnly";
-            const sandbox = params.sandboxPolicy.type !== "dangerFullAccess";
+            const sandbox = params.sandboxPolicy.type === "workspaceWrite";
             expect(params.approvalPolicy).toBe(
-              sandbox && !isReadOnly ? "on-request" : "never",
+              sandbox ? "on-request" : "never",
             );
             if (
               scenario.method === "turn/steer" &&
@@ -297,13 +292,11 @@ describe("cross-provider permission changes: Codex", () => {
               ).toHaveLength(1);
             }
             return {
-              mode: isReadOnly
-                ? "read-only"
-                : !sandbox
-                  ? "full"
-                  : params.approvalsReviewer === "auto_review"
-                    ? "auto"
-                    : "accept-edits",
+              mode: !sandbox
+                ? "full"
+                : params.approvalsReviewer === "auto_review"
+                  ? "auto"
+                  : "accept-edits",
               sandbox,
             };
           },

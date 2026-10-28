@@ -38,36 +38,26 @@ export function permissionChangeCases(
 function permissionChangeOptions(
   mode: PermissionMode,
 ): RuntimePermissionPolicy {
-  switch (mode) {
-    case "read-only":
-      return {
-        permissionMode: "read-only",
-        permissionScope: "read-only",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      };
-    case "full":
-      return {
-        permissionMode: "full",
+  return mode === "full"
+    ? {
+        permissionMode: mode,
         permissionScope: "full",
         approvalReviewer: null,
         permissionEscalation: null,
-      };
-    case "auto":
-      return {
-        permissionMode: "auto",
-        permissionScope: "workspace",
-        approvalReviewer: "automatic",
-        permissionEscalation: "ask",
-      };
-    case "accept-edits":
-      return {
-        permissionMode: "accept-edits",
-        permissionScope: "workspace",
-        approvalReviewer: "user",
-        permissionEscalation: "ask",
-      };
-  }
+      }
+    : mode === "auto"
+      ? {
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
+          permissionEscalation: "ask",
+        }
+      : {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+        };
 }
 
 export async function runPermissionChangeCase(

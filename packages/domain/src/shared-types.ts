@@ -48,12 +48,7 @@ export const instructionModeValues = ["append", "replace"] as const;
 export const instructionModeSchema = z.enum(instructionModeValues);
 export type InstructionMode = z.infer<typeof instructionModeSchema>;
 
-export const permissionModeValues = [
-  "read-only",
-  "accept-edits",
-  "auto",
-  "full",
-] as const;
+export const permissionModeValues = ["accept-edits", "auto", "full"] as const;
 export const permissionModeSchema = z.enum(permissionModeValues);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
 
@@ -88,6 +83,7 @@ export const permissionModeInputSchema = z
 const legacyRecordedPermissionModeValues = [
   "workspace-write",
   "readonly",
+  "read-only",
 ] as const;
 const recordedPermissionModeSchema = z.enum([
   ...permissionModeValues,
@@ -533,11 +529,7 @@ export type RecordedThreadExecutionOptions = z.infer<
   typeof recordedThreadExecutionOptionsSchema
 >;
 
-export const runtimePermissionScopeValues = [
-  "read-only",
-  "workspace",
-  "full",
-] as const;
+export const runtimePermissionScopeValues = ["workspace", "full"] as const;
 const runtimePermissionScopeSchema = z.enum(runtimePermissionScopeValues);
 export type RuntimePermissionScope = z.infer<
   typeof runtimePermissionScopeSchema
@@ -546,12 +538,6 @@ export type RuntimePermissionScope = z.infer<
 export const runtimePermissionPolicySchema = z.discriminatedUnion(
   "permissionMode",
   [
-    z.object({
-      permissionMode: z.literal("read-only"),
-      permissionScope: z.literal("read-only"),
-      approvalReviewer: z.null(),
-      permissionEscalation: z.null(),
-    }),
     z.object({
       permissionMode: z.literal("accept-edits"),
       permissionScope: z.literal("workspace"),

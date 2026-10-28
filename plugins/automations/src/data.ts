@@ -217,6 +217,11 @@ export const migrations = [
    CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_single_flight_idx
      ON automation_runs(automation_id)
      WHERE status = 'running';`,
+  `UPDATE automations
+   SET execution = json_set(execution, '$.permissionMode', 'auto')
+   WHERE run_mode = 'agent'
+     AND json_valid(execution)
+     AND json_extract(execution, '$.permissionMode') = 'read-only';`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {

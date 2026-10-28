@@ -374,10 +374,7 @@ function notifyInsertedEventThreads(
 function addParentTurnNotificationFollowUp(
   args: AddParentTurnNotificationFollowUpArgs,
 ): void {
-  if (
-    !isParentNotifiableChildThread(args.thread) ||
-    !args.thread.notifyParentOnTurnEnd
-  ) {
+  if (!isParentNotifiableChildThread(args.thread)) {
     return;
   }
   if (args.turnStatus === "failed") {
@@ -481,8 +478,7 @@ async function applyEventEffects(
         if (
           turnCompleted.thread &&
           turnCompleted.isRootTurnCompletion &&
-          isParentNotifiableChildThread(turnCompleted.thread) &&
-          turnCompleted.thread.notifyParentOnTurnEnd
+          isParentNotifiableChildThread(turnCompleted.thread)
         ) {
           const alreadyHandledByCommandFailure =
             event.status === "failed" &&

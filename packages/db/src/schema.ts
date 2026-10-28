@@ -619,9 +619,6 @@ export const threads = sqliteTable(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
     ),
-    notifyParentOnTurnEnd: integer("notify_parent_on_turn_end", { mode: "boolean" })
-      .notNull()
-      .default(true),
     lifecycleOwnerThreadId: text("lifecycle_owner_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "restrict" },

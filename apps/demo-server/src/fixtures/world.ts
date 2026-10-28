@@ -52,7 +52,6 @@ export function threadListEntry(
     status: busy ? "active" : "idle",
     parentThreadId: null,
     sourceThreadId: null,
-    notifyParentOnTurnEnd: true,
     lifecycleOwnerThreadId: null,
     originKind: null,
     originPluginId: null,

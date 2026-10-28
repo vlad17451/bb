@@ -77,7 +77,7 @@ import { prepareWorkflowSource } from "./workflow-input.js";
 const executionValuesSchema = z.object({
   model: z.string().min(1),
   reasoningLevel: z.string().min(1),
-  permissionMode: z.enum(["read-only", "accept-edits", "auto", "full"]),
+  permissionMode: z.enum(["accept-edits", "auto", "full"]),
 });
 
 const selectedExecutionSchema = z.object({
@@ -777,7 +777,9 @@ export function createWorkflowService(
       );
     }
     const permissionMode = executionValuesSchema.shape.permissionMode.parse(
-      run.originPermissionMode,
+      run.originPermissionMode === "read-only"
+        ? "auto"
+        : run.originPermissionMode,
     );
     if (!provider.capabilities.permissionModes.includes(permissionMode)) {
       throw new Error(

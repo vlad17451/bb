@@ -533,7 +533,7 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
-  it("notifies a parent when a muted hidden delegated child needs attention", async () => {
+  it("notifies a parent when a hidden delegated child needs attention", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-hidden-delegated-needs-attention",
@@ -565,7 +565,6 @@ describe("internal interactive request lifecycle", () => {
       const childThread = seedThread(harness.deps, {
         environmentId: childEnvironment.id,
         parentThreadId: parentThread.id,
-        notifyParentOnTurnEnd: false,
         projectId: project.id,
         visibility: "hidden",
       });

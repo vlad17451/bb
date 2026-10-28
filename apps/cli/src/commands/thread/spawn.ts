@@ -63,7 +63,6 @@ interface ThreadSpawnCommandOptions {
   option?: string[];
   permissionMode?: string;
   plan?: boolean;
-  notifyParent?: boolean;
   parentSelf?: boolean;
   machine?: string;
   host?: string;
@@ -364,7 +363,6 @@ export function registerSpawnCommand(
     )
     .option("--parent-thread <id>", "Parent thread ID for worker thread links")
     .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
-    .option("--no-notify-parent", "Suppress parent turn outcome notifications")
     .option("--provider <id>", PROVIDER_HELP)
     .option(
       "--model <model>",
@@ -563,11 +561,6 @@ export function registerSpawnCommand(
           parentSelf: opts.parentSelf,
           parentThread: opts.parentThread,
         });
-        if (opts.notifyParent === false && (!parentThreadId || opts.originKind)) {
-          throw new Error(
-            "--no-notify-parent requires --parent-self or --parent-thread and cannot be combined with --origin-kind.",
-          );
-        }
         if (opts.originKind !== undefined && opts.originKind !== "fork") {
           throw new Error("--origin-kind must be fork.");
         }
@@ -616,9 +609,6 @@ export function registerSpawnCommand(
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
             ...(parentThreadId ? { parentThreadId } : {}),
-            ...(opts.notifyParent === false
-              ? { notifyParentOnTurnEnd: false }
-              : {}),
             ...(opts.lifecycleOwnerThread !== undefined
               ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
               : {}),
@@ -639,8 +629,9 @@ export function registerSpawnCommand(
             `First message scheduled for ${new Date(sendAt).toLocaleString()}; the thread stays pending until then.`,
           );
         }
+        // A hidden child reports to its parent too, so the promise follows the
+        // parent link alone.
         if (
-          thread.notifyParentOnTurnEnd &&
           thread.parentThreadId &&
           thread.parentThreadId === resolveContextThreadId()
         ) {

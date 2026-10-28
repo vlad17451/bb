@@ -1245,15 +1245,9 @@ export interface PluginAgentConfiguration {
 
 /**
  * Permission modes a provider can run a session in — BB's own permission
- * vocabulary, ordered least ("read-only") to most ("full") privileged.
- * Declare "read-only" only when the provider can enforce it: no file writes
- * and no state-changing commands.
+ * vocabulary, ordered least ("accept-edits") to most ("full") privileged.
  */
-export type PluginProviderPermissionMode =
-  | "read-only"
-  | "accept-edits"
-  | "auto"
-  | "full";
+export type PluginProviderPermissionMode = "accept-edits" | "auto" | "full";
 
 /**
  * Coarse reasoning-effort ladder entries, ordered lowest to highest. The

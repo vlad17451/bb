@@ -19,12 +19,7 @@ export {
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
 } from "./limits.js";
 
-export const permissionModeSchema = z.enum([
-  "read-only",
-  "accept-edits",
-  "auto",
-  "full",
-]);
+export const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
 export const reasoningLevelSchema = z.string().min(1);
 export type ReasoningLevel = z.infer<typeof reasoningLevelSchema>;

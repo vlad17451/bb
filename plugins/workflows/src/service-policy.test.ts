@@ -68,6 +68,7 @@ interface WorkerState {
 function setup(
   settings: WorkflowSettings = DEFAULT_WORKFLOW_SETTINGS,
   files: Record<string, string> = {},
+  permissionModes: ("auto" | "full")[] = ["full"],
 ) {
   let childCount = 0;
   let originDeleted = false;
@@ -150,7 +151,7 @@ function setup(
               supportsServiceTier: true,
               supportsNativeUserQuestion: false,
               supportsFork: true,
-              permissionModes: ["full"],
+              permissionModes,
             },
             composerActions: [],
           },
@@ -349,6 +350,33 @@ describe("workflow service policy integration", () => {
     };
     expect(firstStatus.settings).toEqual(initial);
     expect(secondStatus.settings).toEqual(next);
+  });
+
+  it("runs retired read-only workflow snapshots in Auto and preserves their history", async () => {
+    const test = setup(DEFAULT_WORKFLOW_SETTINGS, {}, ["auto", "full"]);
+    harnesses.push(test.harness);
+    const run = await test.start(source(`return await agent("continue work");`));
+    test.db
+      .prepare(
+        "UPDATE workflow_runs SET origin_permission_mode = 'read-only' WHERE id = ?",
+      )
+      .run(run.id);
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() => {
+        expect(test.harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+      });
+      expect(test.harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+        permissionMode: "auto",
+      });
+      expect(getRunRequired(test.db, run.id).originPermissionMode).toBe(
+        "read-only",
+      );
+    } finally {
+      controller.abort();
+      await worker;
+    }
   });
 
   it("resolves named and path children on the origin host", async () => {

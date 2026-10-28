@@ -104,7 +104,6 @@ export function makeThreadResponse(
     sectionId: null,
     status: "idle",
     parentThreadId: null,
-    notifyParentOnTurnEnd: true,
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,

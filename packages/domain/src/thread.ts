@@ -404,7 +404,6 @@ export const threadSchema = z.object({
   sectionId: z.string().nullable(),
   status: threadStatusSchema,
   parentThreadId: z.string().nullable(),
-  notifyParentOnTurnEnd: z.boolean(),
   lifecycleOwnerThreadId: z.string().nullable(),
   sourceThreadId: z.string().nullable(),
   originKind: threadOriginKindSchema.nullable(),

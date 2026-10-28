@@ -270,7 +270,7 @@ describe("first-party provider plugins", () => {
             supportsThreadRename: true,
             supportsServiceTier: true,
             supportsNativeUserQuestion: false,
-            permissionModes: ["read-only", "accept-edits", "auto", "full"],
+            permissionModes: ["accept-edits", "auto", "full"],
             supportsFork: true,
             supportsSessionRewind: true,
             modelCatalogScope: "host",

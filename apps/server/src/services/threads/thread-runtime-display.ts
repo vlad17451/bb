@@ -153,7 +153,6 @@ function toPublicThread(thread: Thread): Thread {
     status: thread.status,
     parentThreadId: thread.parentThreadId,
     sourceThreadId: thread.sourceThreadId,
-    notifyParentOnTurnEnd: thread.notifyParentOnTurnEnd,
     lifecycleOwnerThreadId: thread.lifecycleOwnerThreadId,
     originKind: thread.originKind,
     originPluginId: thread.originPluginId,

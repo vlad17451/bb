@@ -299,6 +299,45 @@ describe("data migrations", () => {
     expect(modes).toEqual(["accept-edits", "accept-edits"]);
   });
 
+  it("migrates retired read-only automations to Auto without changing current modes", () => {
+    const db = new Database(":memory:");
+    try {
+      for (const migration of migrations.slice(0, -1)) db.exec(migration);
+      const retired = createScheduledAutomation(db, 1, "auto_retired");
+      const current = createScheduledAutomation(db, 1, "auto_current");
+      const corrupt = createScheduledAutomation(db, 1, "auto_corrupt");
+      db.prepare("UPDATE automations SET execution = ? WHERE id = ?").run(
+        "invalid-json",
+        corrupt.id,
+      );
+      db
+        .prepare(
+          "UPDATE automations SET execution = json_set(execution, '$.permissionMode', 'read-only') WHERE id = ?",
+        )
+        .run(retired.id);
+      const migration = migrations.at(-1);
+      if (migration === undefined) throw new Error("Missing retirement migration");
+
+      for (let startup = 0; startup < 2; startup += 1) {
+        db.exec(migration);
+        const retiredRow = getAutomation(db, retired.id);
+        const currentRow = getAutomation(db, current.id);
+        if (!retiredRow || !currentRow) throw new Error("Missing automation");
+        expect(parseAutomationExecution(retiredRow.execution)).toMatchObject({
+          mode: "agent",
+          permissionMode: "auto",
+          prompt: "do it",
+        });
+        expect(parseAutomationExecution(currentRow.execution)).toMatchObject({
+          permissionMode: "accept-edits",
+        });
+        expect(getAutomation(db, corrupt.id)?.execution).toBe("invalid-json");
+      }
+    } finally {
+      db.close();
+    }
+  });
+
   it("settles older duplicate running rows so single-flight can be introduced on history", () => {
     const db = new Database(":memory:");
     db.exec(migrations[0] ?? "");

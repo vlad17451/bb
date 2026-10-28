@@ -136,7 +136,6 @@ export function makeThread(overrides: Partial<Thread> = {}): Thread {
     sectionId: null,
     status: "idle",
     parentThreadId: null,
-    notifyParentOnTurnEnd: true,
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,

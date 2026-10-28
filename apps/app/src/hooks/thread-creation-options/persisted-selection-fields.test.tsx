@@ -48,6 +48,12 @@ describe("usePromptBoxPermissionModePreference", () => {
     expect(result.current.value).toBe("");
   });
 
+  it("migrates a stored retired read-only preference to auto", () => {
+    window.localStorage.setItem("bb.promptbox.permission-mode", "read-only");
+    const { result } = renderPermissionModePreference();
+    expect(result.current.value).toBe("auto");
+  });
+
   it("keeps a stored current preset", () => {
     window.localStorage.setItem("bb.promptbox.permission-mode", "auto");
     const { result } = renderPermissionModePreference();

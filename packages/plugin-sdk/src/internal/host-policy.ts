@@ -514,7 +514,6 @@ function normalizeMentionProviderTriggers(
 export const PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS = 80;
 
 export const PLUGIN_PROVIDER_PERMISSION_MODE_VALUES = [
-  "read-only",
   "accept-edits",
   "auto",
   "full",

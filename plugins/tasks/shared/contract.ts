@@ -47,7 +47,6 @@ export type PresetReasoningLevel = z.infer<typeof presetReasoningLevelSchema>;
 export const presetServiceTierSchema = nonBlankStringSchema;
 export type PresetServiceTier = z.infer<typeof presetServiceTierSchema>;
 export const PRESET_PERMISSION_MODES = [
-  "read-only",
   "accept-edits",
   "auto",
   "full",

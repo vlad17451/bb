@@ -114,7 +114,9 @@ describe("PluginPermissionModePicker", () => {
     const onChange = vi.fn();
 
     function ControlledPicker() {
-      const [value, setValue] = useState<PermissionMode>("full");
+      const [value, setValue] = useState<"accept-edits" | "auto" | "full">(
+        "full",
+      );
       return (
         <PluginPermissionModePicker
           providerId="codex"

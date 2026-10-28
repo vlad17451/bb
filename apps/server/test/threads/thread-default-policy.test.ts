@@ -741,6 +741,29 @@ describe("resolveThreadDefaultPermissionMode", () => {
 });
 
 describe("resolveThreadExecutionPermissionMode", () => {
+  it("maps a retired read-only execution to Auto for future work", () => {
+    expect(
+      resolveThreadExecutionPermissionMode(registry, {
+        lastExecutionPermissionMode: "read-only",
+        projectExecutionPermissionMode: "full",
+        thread: makeThread({ providerId: "codex" }),
+      }),
+    ).toBe("auto");
+  });
+
+  it.each(["codex", "claude-code"])(
+    "maps a retired read-only parent execution to Auto for %s children",
+    (providerId) => {
+      expect(
+        resolveThreadExecutionPermissionMode(registry, {
+          parentThread: makeParentThread(),
+          parentThreadExecutionPermissionMode: "read-only",
+          thread: makeThread({ parentThreadId: "thr-parent-1", providerId }),
+        }),
+      ).toBe("auto");
+    },
+  );
+
   it("prefers requested permission modes over every fallback", () => {
     expect(
       resolveThreadExecutionPermissionMode(registry, {
@@ -775,26 +798,6 @@ describe("resolveThreadExecutionPermissionMode", () => {
       }),
     ).toBe("accept-edits");
   });
-
-  it.each([
-    ["claude-code", "accept-edits"],
-    ["codex", "read-only"],
-  ] as const)(
-    "gives a %s child of a read-only parent its least privileged mode",
-    (providerId, expected) => {
-      expect(
-        resolveThreadExecutionPermissionMode(registry, {
-          parentThread: makeParentThread(),
-          parentThreadExecutionPermissionMode: "read-only",
-          projectExecutionPermissionMode: "full",
-          thread: makeThread({
-            parentThreadId: "thr-parent-1",
-            providerId,
-          }),
-        }),
-      ).toBe(expected);
-    },
-  );
 
   it("uses project permission defaults for child threads without parent execution history", () => {
     expect(

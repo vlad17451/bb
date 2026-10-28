@@ -62,7 +62,42 @@ describe("tasks storage", () => {
             "SELECT COUNT(*) AS count FROM schema_version",
           )
           .get()?.count,
-      ).toBe(8);
+      ).toBe(9);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("migrates retired read-only presets to Auto without changing current modes", async () => {
+    const { db, harness } = setup();
+    try {
+      db.exec(`
+        DELETE FROM schema_version WHERE version = 9;
+        INSERT INTO presets (
+          id, name, provider_id, model_id, reasoning_level, permission_mode,
+          instructions, builtin, created_at
+        ) VALUES
+          (
+            '01J00000000000000000000004', 'Retired mode', 'codex',
+            'gpt-5', 'high', 'read-only', '', 0,
+            '2026-07-15T00:00:00.000Z'
+          ),
+          (
+            '01J00000000000000000000005', 'Current mode', 'codex',
+            'gpt-5', 'high', 'accept-edits', '', 0,
+            '2026-07-15T00:00:00.000Z'
+          );
+      `);
+
+      for (let startup = 0; startup < 2; startup += 1) {
+        const store = createTasksStore(db);
+        expect(store.getPreset("01J00000000000000000000004")).toMatchObject({
+          permissionMode: "auto",
+        });
+        expect(store.getPreset("01J00000000000000000000005")).toMatchObject({
+          permissionMode: "accept-edits",
+        });
+      }
     } finally {
       await harness.dispose();
     }

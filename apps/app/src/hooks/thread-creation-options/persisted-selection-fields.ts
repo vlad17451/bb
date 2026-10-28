@@ -62,12 +62,7 @@ function isReasoningLevel(value: string): value is ReasoningLevel {
 }
 
 function isPermissionMode(value: string): value is PermissionMode {
-  return (
-    value === "read-only" ||
-    value === "accept-edits" ||
-    value === "auto" ||
-    value === "full"
-  );
+  return value === "accept-edits" || value === "auto" || value === "full";
 }
 
 function isStoredReasoningLevel(value: string): value is StoredReasoningLevel {
@@ -197,6 +192,9 @@ const permissionModePreferenceStorage =
       parse: (storedValue, initialValue) => {
         if (storedValue === "workspace-write") {
           return "accept-edits";
+        }
+        if (storedValue === "read-only") {
+          return "auto";
         }
         return storedValue !== null && isStoredPermissionMode(storedValue)
           ? storedValue

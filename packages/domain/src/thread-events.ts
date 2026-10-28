@@ -43,8 +43,8 @@ export type ThreadTurnInitiator = z.infer<typeof threadTurnInitiatorSchema>;
 
 /**
  * Execution values are historical facts once recorded in the event stream.
- * The stored-event boundary therefore accepts the two retired modes without
- * treating either as a current public preset.
+ * The stored-event boundary therefore accepts the three retired modes without
+ * treating them as current public presets.
  */
 const turnRequestOptionsSchema = recordedThreadExecutionOptionsSchema;
 
