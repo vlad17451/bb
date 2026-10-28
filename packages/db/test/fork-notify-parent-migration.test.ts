@@ -58,38 +58,51 @@ describe("fork parent notification migration", () => {
     const db = createMigratedConnection();
     const folder = mkdtempSync(join(tmpdir(), "bb-fork-migrations-"));
     try {
-      const forkMigration = db.$client
+      const latestMigration = db.$client
         .prepare<[], { created_at: number }>(
-          "SELECT max(created_at) AS created_at FROM __fork_migrations",
+          `SELECT max(created_at) AS created_at FROM (
+            SELECT created_at FROM __drizzle_migrations
+            UNION ALL
+            SELECT created_at FROM __fork_migrations
+          )`,
         )
         .get();
-      if (!forkMigration) throw new Error("Missing fork migration");
-      mkdirSync(join(folder, "meta"));
-      writeFileSync(
-        join(folder, "meta", "_journal.json"),
-        JSON.stringify({
-          version: "7",
-          dialect: "sqlite",
-          entries: [{
-            idx: 0,
-            version: "6",
-            when: forkMigration.created_at,
-            tag: "0144_test_upstream",
-            breakpoints: true,
-          }],
-        }),
-      );
-      writeFileSync(
-        join(folder, "0144_test_upstream.sql"),
-        "CREATE TABLE test_upstream_migration (id integer);",
-      );
+      if (!latestMigration) throw new Error("Missing migration history");
+      const migrationTimestamp = latestMigration.created_at + 1;
+      for (const source of ["fork", "upstream"]) {
+        const migrationsFolder = join(folder, source);
+        const migrationTag = `0000_test_${source}`;
+        const tableName = `test_${source}_migration`;
+        mkdirSync(join(migrationsFolder, "meta"), { recursive: true });
+        writeFileSync(
+          join(migrationsFolder, "meta", "_journal.json"),
+          JSON.stringify({
+            version: "7",
+            dialect: "sqlite",
+            entries: [{
+              idx: 0,
+              version: "6",
+              when: migrationTimestamp,
+              tag: migrationTag,
+              breakpoints: true,
+            }],
+          }),
+        );
+        writeFileSync(
+          join(migrationsFolder, `${migrationTag}.sql`),
+          `CREATE TABLE ${tableName} (id integer);`,
+        );
 
-      drizzleMigrate(db, { migrationsFolder: folder });
-      expect(
-        db.$client.prepare(
-          "SELECT name FROM sqlite_master WHERE name = 'test_upstream_migration'",
-        ).get(),
-      ).toBeDefined();
+        drizzleMigrate(db, {
+          migrationsFolder,
+          ...(source === "fork" ? { migrationsTable: "__fork_migrations" } : {}),
+        });
+        expect(
+          db.$client
+            .prepare("SELECT name FROM sqlite_master WHERE name = ?")
+            .get(tableName),
+        ).toBeDefined();
+      }
       migrate(db);
       const thread = createTestThread(db);
       expect(getThread(db, thread.id)?.id).toBe(thread.id);
