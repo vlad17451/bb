@@ -35,7 +35,6 @@ const UNPREFIXED_BUNDLED_PLUGIN_IDS = [
   "plugin-api-docs",
   "plugin-api-tester",
   "provider-acp",
-  "provider-agy",
   "provider-claude-code",
   "provider-codex",
   "provider-pi",

@@ -30,7 +30,6 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   // Providers whose bridge ships as a plugin artifact: if the plugin does not
   // load, its provider disappears from the install entirely.
   "provider-acp",
-  "provider-agy",
   "provider-claude-code",
   "provider-codex",
   "push-notifications",

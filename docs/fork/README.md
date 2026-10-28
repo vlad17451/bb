@@ -58,10 +58,6 @@ Some tests fail in the dev container on a clean checkout (the Claude Code cases 
 
 A change that adds a value to a closed list (permission modes, scopes, capabilities) follows [closed-enums.md](closed-enums.md).
 
-### Testing a provider bridge
-
-`plugins/provider-agy/src/bridge/bridge.test.ts` is the template for testing a bridge through its JSON-RPC surface: `experimental_createBridgeJsonRpcTestHarness(handleLine)` from `@get-bb/plugin-sdk/provider-bridge/testing` sends requests and captures the bridge's output, a shell script stands in for the provider CLI (agy reads `BB_AGY_EXECUTABLE`), and `turn/start` needs the `providerThreadId` that `thread/start` returned plus full execution `options`. Run it with `fork/dev.sh sh -c "cd plugins/provider-agy && pnpm exec vitest run"`.
-
 ## Planned
 
 A daily job that rebases `fork` onto the `gitHead` of the newest npm release and builds it, opening an issue when the rebase conflicts.
