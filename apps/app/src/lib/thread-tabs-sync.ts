@@ -15,6 +15,7 @@ import { BbHttpError, sdk } from "./sdk";
 import {
   areFixedPanelTabsEquivalent,
   ensureOpenFixedPanelHasActiveTab,
+  migrateLegacyFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
 } from "./fixed-panel-tabs-state";
@@ -46,10 +47,18 @@ type PersistedThreadFixedPanelTab = Exclude<
 function persistedThreadTabs(
   tabs: readonly (FixedPanelTab | ThreadTab)[],
 ): readonly PersistedThreadFixedPanelTab[] {
-  return tabs.filter(
-    (tab): tab is PersistedThreadFixedPanelTab =>
-      tab.kind !== "side-chat" && tab.kind !== "plugin-page-fixed",
-  );
+  const seenTabIds = new Set<string>();
+  return tabs
+    .filter(
+      (tab): tab is PersistedThreadFixedPanelTab =>
+        tab.kind !== "side-chat" && tab.kind !== "plugin-page-fixed",
+    )
+    .map(migrateLegacyFixedPanelTab)
+    .filter((tab) => {
+      if (seenTabIds.has(tab.id)) return false;
+      seenTabIds.add(tab.id);
+      return true;
+    });
 }
 
 export function areThreadTabListsEquivalent(
@@ -253,7 +262,12 @@ async function persistThreadTabs({
       previousTabs,
       tabs,
     );
-    if (areThreadTabListsEquivalent(current.tabs, tabsToPersist)) {
+    if (
+      !current.tabs.some(
+        (tab) => tab.kind === "git-diff" || tab.kind === "thread-info",
+      ) &&
+      areThreadTabListsEquivalent(current.tabs, tabsToPersist)
+    ) {
       return;
     }
     try {

@@ -45,7 +45,7 @@ export function experimental_defineHostEntry(args) {
 `;
 
 const PLUGIN_SDK_ROOT_RUNTIME = `
-export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 1024 * 1024;
+export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 32 * 1024 * 1024;
 export function defineRpcContract(contract) { return contract; }
 ${PLUGIN_SDK_DEFINE_HOST_ENTRY_RUNTIME}`;
 
@@ -312,6 +312,7 @@ interface PluginHostBuildResult {
   mapPath: string;
   metaPath: string;
   artifactDigest: string;
+  inputs: string[];
 }
 
 async function removeStaleHostStageDirectories(distDir: string): Promise<void> {
@@ -588,7 +589,10 @@ export async function buildPluginHost(
     await renameIntoPlace(stagedJsPath, jsPath);
     await renameIntoPlace(join(stageDir, "host.js.map"), mapPath);
     await renameIntoPlace(stagedMetaPath, metaPath);
-    return { jsPath, mapPath, metaPath, artifactDigest };
+    const inputs = Object.keys(bundle.metafile.inputs)
+      .filter((input) => !/^[\w-]{2,}:/u.test(input))
+      .map((input) => resolve(workingDir, input));
+    return { jsPath, mapPath, metaPath, artifactDigest, inputs };
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }

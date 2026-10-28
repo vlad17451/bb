@@ -4,8 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
-import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
+import { type ThreadEvent, threadScope, turnScope } from "@bb/domain";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type { HostWatcher } from "@bb/host-watcher";
 import {
@@ -13,13 +12,7 @@ import {
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
-import {
-  createDeferredPromise,
-  initRepo,
-  makeTempDir,
-  makeWorkspaceMergeBase,
-  makeWorkspaceStatus,
-} from "@bb/test-helpers";
+import { createDeferredPromise, initRepo, makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RuntimeManager,
@@ -28,14 +21,12 @@ import {
 import { createRuntimeShellEnvCache } from "./runtime-shell-env-cache.js";
 
 type GetCurrentBranchArgs = Parameters<HostWorkspace["getCurrentBranch"]>;
-type GetStatusResult = Awaited<ReturnType<HostWorkspace["getStatus"]>>;
-type GetDiffResult = Awaited<ReturnType<HostWorkspace["getDiff"]>>;
 type GetLocalStateFingerprintResult = Awaited<
-  ReturnType<HostWorkspace["getLocalStateFingerprint"]>
->;
+  ReturnType<HostWorkspace["getLocalStateSnapshot"]>
+>["fingerprint"];
 type GetSharedGitRefsFingerprintResult = Awaited<
-  ReturnType<HostWorkspace["getSharedGitRefsFingerprint"]>
->;
+  ReturnType<HostWorkspace["getSharedGitRefsSnapshot"]>
+>["fingerprint"];
 type CommitArgs = Parameters<HostWorkspace["commit"]>;
 type ProvisionWorkspaceMockArgs = Parameters<
   (options: ProvisionWorkspaceArgs) => Promise<HostWorkspace>
@@ -82,7 +73,7 @@ async function runGit(
 
 async function writeInjectedSkillSource(
   args: WriteInjectedSkillSourceArgs,
-): Promise<Extract<HostDaemonInjectedSkillSource, { kind: "workspace-path" }>> {
+): Promise<Extract<HostDaemonInjectedSkillSource, { kind: "host-path" }>> {
   const sourceRootPath = path.join(args.dataDir, "skills", args.name);
   await fs.mkdir(sourceRootPath, { recursive: true });
   await fs.writeFile(
@@ -99,8 +90,8 @@ async function writeInjectedSkillSource(
     "utf8",
   );
   return {
-    kind: "workspace-path",
-    sourceType: "project",
+    kind: "host-path",
+    sourceType: "shared-user",
     name: args.name,
     description: `Use ${args.name} when runtime manager tests run.`,
     sourceRootPath,
@@ -117,16 +108,6 @@ function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
 }
 
 function createFakeWorkspace(path: string, isGitRepo = true) {
-  const status: GetStatusResult = makeWorkspaceStatus({
-    mergeBase: makeWorkspaceMergeBase(),
-  });
-  const diff: GetDiffResult = {
-    diff: "",
-    truncated: false,
-    shortstat: "",
-    files: "",
-    mergeBaseRef: null,
-  };
   let localStateFingerprint: GetLocalStateFingerprintResult = `local:${path}:initial`;
   let localStateFingerprintError: Error | null = null;
   let sharedGitRefsFingerprint: GetSharedGitRefsFingerprintResult = `refs:${path}:initial`;
@@ -138,30 +119,19 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     getDefaultBranch: vi.fn(async () => "main"),
     getCurrentBranch: vi.fn(async (..._args: GetCurrentBranchArgs) => "main"),
     getHeadSha: vi.fn(async () => "commit-1"),
-    getLocalStateFingerprint: vi.fn(async () => {
+    getLocalStateSnapshot: vi.fn(async () => {
       if (localStateFingerprintError) {
         throw localStateFingerprintError;
       }
-      return localStateFingerprint;
+      return { fingerprint: localStateFingerprint, branchName: "main" };
     }),
-    getSharedGitRefsFingerprint: vi.fn(async () => {
+    getSharedGitRefsSnapshot: vi.fn(async () => {
       if (sharedGitRefsFingerprintError) {
         throw sharedGitRefsFingerprintError;
       }
-      return sharedGitRefsFingerprint;
+      return { fingerprint: sharedGitRefsFingerprint, defaultBranch: "main" };
     }),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
-    getStatus: vi.fn(async () => status),
-    getDiff: vi.fn(async () => diff),
-    diffFiles: vi.fn(async () => ({
-      files: [],
-      shortstat: "",
-      mergeBaseRef: null,
-      truncated: false,
-    })),
-    diffPatch: vi.fn(async () => []),
-    getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
-    runPullRequestAction: vi.fn(async () => undefined),
     commit: vi.fn(async (..._args: CommitArgs) => ({
       commitSha: "commit-1",
       commitSubject: "commit",
@@ -228,6 +198,7 @@ function createFakeRuntime() {
       models: [],
       selectedOnlyModels: [],
     })),
+    listCommands: vi.fn(async () => ({ commands: [] })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {
@@ -1675,7 +1646,7 @@ describe("RuntimeManager", () => {
   it("does not start a workspace watcher when loading an environment", async () => {
     const hostWatcher = {
       watchWorkspace: vi.fn(() => () => undefined),
-      watchThreadStorageRoot: vi.fn(() => () => undefined),
+      watchThreadStorage: vi.fn(() => () => undefined),
     } satisfies HostWatcher;
     const manager = new RuntimeManager({
       hostWatcher,
@@ -1689,7 +1660,7 @@ describe("RuntimeManager", () => {
     });
 
     expect(hostWatcher.watchWorkspace).not.toHaveBeenCalled();
-    expect(hostWatcher.watchThreadStorageRoot).not.toHaveBeenCalled();
+    expect(hostWatcher.watchThreadStorage).not.toHaveBeenCalled();
   });
 
   it("lists live threads for session reconciliation before the first turn event", async () => {

@@ -1,30 +1,29 @@
+import { Video } from "@bb/shared-ui/video";
 import {
   useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
-  type CSSProperties,
+  useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@bb/shared-ui/button";
 import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
-import { usePortalScopeProps } from "@bb/shared-ui/lib/portal-scope";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 import { useBrowserDimmingOverlay } from "@/hooks/useBrowserDimmingModal";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { IMAGE_TRANSPARENCY_CHECKER_STYLE } from "@bb/shared-ui/lib/image-preview";
+import {
+  constrainPanZoomOffset,
+  createPanZoomTransform,
+  usePanZoom,
+  type PanZoomScaleLimits,
+  type PanZoomView,
+} from "./pan-zoom.js";
 
 type ImageLightboxKeyAction = "close" | "next" | "previous";
-
-const IMAGE_TRANSPARENCY_CHECKER_BASE =
-  "color-mix(in oklch, var(--ink) 5%, var(--canvas))";
-const IMAGE_TRANSPARENCY_CHECKER_MARK =
-  "color-mix(in oklch, var(--ink) 14%, var(--canvas))";
-
-export const IMAGE_TRANSPARENCY_CHECKER_STYLE: CSSProperties = {
-  backgroundColor: IMAGE_TRANSPARENCY_CHECKER_BASE,
-  backgroundImage: `conic-gradient(${IMAGE_TRANSPARENCY_CHECKER_MARK} 25%, ${IMAGE_TRANSPARENCY_CHECKER_BASE} 0 50%, ${IMAGE_TRANSPARENCY_CHECKER_MARK} 0 75%, ${IMAGE_TRANSPARENCY_CHECKER_BASE} 0)`,
-  backgroundSize: "16px 16px",
-};
 
 interface ImageLightboxKeyActionInput {
   event: Pick<
@@ -34,10 +33,10 @@ interface ImageLightboxKeyActionInput {
   hasNavigation: boolean;
 }
 
-interface WrappedImageIndexInput {
-  currentIndex: number;
-  direction: "next" | "previous";
-  itemCount: number;
+interface LightboxZoomableImageProps {
+  alt: string;
+  src: string;
+  viewport: HTMLDivElement | null;
 }
 
 interface ImageLightboxProps {
@@ -45,6 +44,7 @@ interface ImageLightboxProps {
   previousDisabled?: boolean;
   nextDisabled?: boolean;
   navigationStatus?: string;
+  mediaType?: "image" | "video";
   imageAlt: string;
   imageSrc: string | null;
   isOpen?: boolean;
@@ -86,18 +86,76 @@ export function getImageLightboxKeyAction({
   return null;
 }
 
-export function getWrappedImageIndex({
-  currentIndex,
-  direction,
-  itemCount,
-}: WrappedImageIndexInput): number {
-  if (itemCount <= 0) {
-    return currentIndex;
-  }
-  if (direction === "previous") {
-    return currentIndex === 0 ? itemCount - 1 : currentIndex - 1;
-  }
-  return currentIndex === itemCount - 1 ? 0 : currentIndex + 1;
+const LIGHTBOX_SCALE_LIMITS: PanZoomScaleLimits = { max: 8, min: 1 };
+
+function LightboxZoomableImage({
+  alt,
+  src,
+  viewport,
+}: LightboxZoomableImageProps) {
+  const imageRef = useRef<HTMLImageElement>(null);
+  const constrainView = useCallback(
+    (view: PanZoomView) => {
+      const image = imageRef.current;
+      if (image === null || viewport === null) {
+        return view;
+      }
+      return constrainPanZoomOffset({
+        contentSize: { height: image.offsetHeight, width: image.offsetWidth },
+        view,
+        viewportSize: {
+          height: viewport.clientHeight,
+          width: viewport.clientWidth,
+        },
+      });
+    },
+    [viewport],
+  );
+  const { isDragging, pointerHandlers, resetView, view } = usePanZoom({
+    constrainView,
+    enabled: true,
+    limits: LIGHTBOX_SCALE_LIMITS,
+    viewportElement: viewport,
+  });
+  const isZoomed = view.scale > LIGHTBOX_SCALE_LIMITS.min;
+
+  return (
+    <>
+      <img
+        ref={imageRef}
+        src={src}
+        alt={alt}
+        draggable={!isZoomed}
+        style={{
+          ...IMAGE_TRANSPARENCY_CHECKER_STYLE,
+          transform: createPanZoomTransform(view),
+        }}
+        className={cn(
+          "max-h-[82dvh] max-w-full object-contain",
+          isZoomed &&
+            (isDragging ? "cursor-grabbing select-none" : "cursor-grab"),
+        )}
+        onClick={(event) => {
+          if (isZoomed) {
+            event.stopPropagation();
+          }
+        }}
+        {...(isZoomed ? pointerHandlers : {})}
+      />
+      {isZoomed ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-[max(0.5rem,env(safe-area-inset-top))] size-11 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+          onClick={resetView}
+          aria-label="Fit image to screen"
+        >
+          <Icon name="Minimize2" className="size-5" />
+        </Button>
+      ) : null}
+    </>
+  );
 }
 
 export function ImageLightbox({
@@ -105,6 +163,7 @@ export function ImageLightbox({
   previousDisabled = false,
   nextDisabled = false,
   navigationStatus,
+  mediaType = "image",
   imageAlt,
   imageSrc,
   isOpen,
@@ -115,6 +174,11 @@ export function ImageLightbox({
 }: ImageLightboxProps) {
   const isVisible = isOpen ?? imageSrc !== null;
   const panelRef = useRef<HTMLDivElement>(null);
+  const [panelElement, setPanelElement] = useState<HTMLDivElement | null>(null);
+  const attachPanel = useCallback((element: HTMLDivElement | null) => {
+    panelRef.current = element;
+    setPanelElement(element);
+  }, []);
   const closeRef = useRef(onClose);
   useLayoutEffect(() => {
     closeRef.current = onClose;
@@ -137,6 +201,8 @@ export function ImageLightbox({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLVideoElement && event.key !== "Escape")
+        return;
       const action = getImageLightboxKeyAction({
         event,
         hasNavigation,
@@ -185,13 +251,16 @@ export function ImageLightbox({
 
   return createPortal(
     <div
-      ref={panelRef}
+      ref={attachPanel}
       {...scopeProps}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
       tabIndex={-1}
-      className="fixed inset-0 z-50 flex h-dvh w-full cursor-zoom-out items-center justify-center bg-black/70 p-4 outline-none animate-in fade-in-0 duration-150 motion-reduce:animate-none"
+      className={cn(
+        "fixed inset-0 z-50 flex h-dvh w-full cursor-zoom-out items-center justify-center overflow-hidden bg-black/70 p-4 outline-none animate-in fade-in-0 duration-150 motion-reduce:animate-none",
+        mediaType === "image" && "touch-none",
+      )}
       onClick={(event) => {
         if (
           event.target === event.currentTarget ||
@@ -204,12 +273,22 @@ export function ImageLightbox({
       <h2 id={titleId} className="sr-only">
         {title}
       </h2>
-      {imageSrc ? (
-        <img
+      {imageSrc && mediaType === "video" ? (
+        <Video
+          key={imageSrc}
           src={imageSrc}
+          aria-label={imageAlt}
+          controls
+          autoPlay
+          playsInline
+          className="max-h-[82dvh] max-w-full cursor-auto"
+        />
+      ) : imageSrc ? (
+        <LightboxZoomableImage
+          key={imageSrc}
           alt={imageAlt}
-          style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
-          className="max-h-[82dvh] max-w-full object-contain"
+          src={imageSrc}
+          viewport={panelElement}
         />
       ) : (
         <div
@@ -264,7 +343,9 @@ export function ImageLightbox({
         size="icon"
         className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] size-11 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
         onClick={onClose}
-        aria-label="Close image preview"
+        aria-label={
+          mediaType === "video" ? "Close video preview" : "Close image preview"
+        }
       >
         <Icon name="X" className="size-5" />
       </Button>

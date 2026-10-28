@@ -22,7 +22,7 @@ import {
   parseLocalFileHref,
   resolveRelativeLocalFileHref,
 } from "@/components/ui/markdown-local-file-link.js";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
   computeMutedPrefixLength,
   parseAutomationDueMessage,
@@ -85,7 +85,6 @@ interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
   onCopyLink?: () => void;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
-  onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
@@ -192,7 +191,6 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onSelectProse?: (selection: MessageProseSelection | null) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
-  onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
   projectId?: string;
   showActions: boolean;
   mobileActionDisplay: "inline" | "overflow";
@@ -257,6 +255,7 @@ function CollapsibleMessageText({
     [body.mentions],
   );
   const isOverflowing = useIsOverflowing({
+    axis: "vertical",
     elementRef: bodyRef,
     enabled: !isExpanded,
     measurementKey: body.text,
@@ -277,8 +276,8 @@ function CollapsibleMessageText({
         ref={bodyRef}
         data-image-gallery-clipped={!isExpanded ? "" : undefined}
         className={cn(
-          "break-words",
-          !isExpanded && "max-h-[15lh] overflow-hidden",
+          "break-words overflow-x-auto",
+          !isExpanded && "max-h-[15lh] overflow-y-hidden",
         )}
         style={
           !isExpanded && showToggle ? COLLAPSED_MESSAGE_FADE_STYLE : undefined
@@ -288,6 +287,7 @@ function CollapsibleMessageText({
           <span>{body.text}</span>
         ) : (
           <MarkdownPreview
+            tableLayout="contained"
             content={
               collapsedPreview?.wasCapped === true
                 ? closeUnterminatedMarkdownCodeSpan(body.text)
@@ -485,7 +485,11 @@ function UserConversationMessage({
             alignment="end"
             mobileActionDisplay={mobileActionDisplay}
             addToChatAttachments={addToChatAttachments}
-            copyImageUrl={attachmentItems.imageItems[0]?.src}
+            copyImageUrl={
+              attachmentItems.imageItems.find(
+                (item) => item.mediaType !== "video",
+              )?.src
+            }
             onAddToChat={onAddToChat}
             onCopyLink={onCopyLink}
             onEdit={onEdit}
@@ -508,7 +512,6 @@ function AssistantConversationMessage({
   onSelectProse,
   onOpenLink,
   onOpenLocalFileLink,
-  onOpenPluginPanel,
   pluginActions,
   projectId,
   showActions,
@@ -586,7 +589,6 @@ function AssistantConversationMessage({
         projectId: projectId ?? null,
       },
       openWorkspaceFile: openDirectiveWorkspaceFile,
-      openThreadPanel: onOpenPluginPanel ?? null,
     };
   }, [
     messageDirectiveRegistry,
@@ -595,7 +597,6 @@ function AssistantConversationMessage({
     turnId,
     projectId,
     openDirectiveWorkspaceFile,
-    onOpenPluginPanel,
   ]);
 
   const codeFenceRendererRegistry = useCodeFenceRendererRegistry();
@@ -650,7 +651,6 @@ function AssistantConversationMessage({
           <CodeFenceRendererHost
             registry={codeFenceRendererRegistry}
             message={codeFenceMessage}
-            openThreadPanel={onOpenPluginPanel ?? null}
             streaming={streaming}
           >
             {markdown}
@@ -671,7 +671,11 @@ function AssistantConversationMessage({
           alignment="start"
           mobileActionDisplay={mobileActionDisplay}
           addToChatAttachments={addToChatAttachments}
-          copyImageUrl={attachmentItems.imageItems[0]?.src}
+          copyImageUrl={
+            attachmentItems.imageItems.find(
+              (item) => item.mediaType !== "video",
+            )?.src
+          }
           onAddToChat={onAddToChat}
           onCopyLink={onCopyLink}
           onFork={onFork}
@@ -689,7 +693,6 @@ export function ConversationMessageContent(
   const {
     attachments,
     onOpenLocalFileLink,
-    onOpenPluginPanel,
     projectId,
     resolveUserAttachmentImageSrc,
     text,
@@ -753,7 +756,6 @@ export function ConversationMessageContent(
       onSelectProse={props.onSelectProse}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
-      onOpenPluginPanel={onOpenPluginPanel}
       projectId={projectId}
       showActions={props.showActions}
       mobileActionDisplay={props.mobileActionDisplay}

@@ -2,6 +2,8 @@ import {
   appendStoredThreadEventsInTransaction,
   createEventId,
   getActiveStoredTurnId,
+  isStoredTurnMainRunIdle,
+  isStoredTurnProviderCompactionRunning,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getStoredProviderSession,
@@ -844,6 +846,23 @@ export function getActiveTurnId(
   return getActiveStoredTurnId(deps.db, threadId);
 }
 
+export function isActiveTurnMainRunIdle(
+  deps: ThreadEventReadDeps,
+  thread: Pick<Thread, "id" | "status">,
+): boolean {
+  if (thread.status !== "active") {
+    return false;
+  }
+  const activeTurnId = getActiveStoredTurnId(deps.db, thread.id);
+  return (
+    activeTurnId !== null &&
+    isStoredTurnMainRunIdle(deps.db, {
+      threadId: thread.id,
+      turnId: activeTurnId,
+    })
+  );
+}
+
 export function isManualCompactionActive(
   deps: ThreadEventReadDeps,
   thread: Pick<Thread, "id" | "status">,
@@ -853,6 +872,15 @@ export function isManualCompactionActive(
   }
 
   const activeTurnId = getActiveStoredTurnId(deps.db, thread.id);
+  if (
+    activeTurnId !== null &&
+    isStoredTurnProviderCompactionRunning(deps.db, {
+      threadId: thread.id,
+      turnId: activeTurnId,
+    })
+  ) {
+    return true;
+  }
   const requestRow = activeTurnId
     ? (getStoredTurnRequestEventForTurn(deps.db, {
         threadId: thread.id,

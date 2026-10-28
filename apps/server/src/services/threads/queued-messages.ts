@@ -66,6 +66,7 @@ import {
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
 import {
   getActiveTurnId,
+  isActiveTurnMainRunIdle,
   getLastProviderThreadId,
   isManualCompactionActive,
 } from "./thread-events.js";
@@ -74,7 +75,10 @@ import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { hasMessageDispatchHooks } from "./dispatch-hooks.js";
 import { attemptDispatch, threadTargetHostId } from "./dispatch-attempt.js";
-import { deliverParentSystemMessage } from "./parent-system-messages.js";
+import {
+  deliverParentSystemMessage,
+  ParentSystemMessageCompactionActiveError,
+} from "./parent-system-messages.js";
 import {
   createQueuedMessageAutoSendPausedError,
   createQueuedMessageClaimLostError,
@@ -151,6 +155,11 @@ export function createAutomaticQueuedMessageGroupEligibility(
         case "time":
           return member.sendAt !== null && member.sendAt <= args.now;
         case "thread-busy":
+          return (
+            args.thread.status === "idle" ||
+            args.thread.status === "pending" ||
+            isActiveTurnMainRunIdle(deps, args.thread)
+          );
         case "stopping":
           return (
             args.thread.status === "idle" || args.thread.status === "pending"
@@ -261,12 +270,14 @@ export async function createQueuedMessageForThread(
           // leaving the wait null keeps every row on one vocabulary, and the
           // idle drain treats the two identically anyway.
           //
-          // Queued while the thread is stopping, it is instead a message the
-          // user composed AFTER asking for the stop, so it carries `stopping`
-          // and runs when the stop lands rather than joining the rows the
-          // manual-stop pause holds back.
+          // Queued while the thread is stopping, or after a manual stop whose
+          // pause is still in force, it is instead a message the user composed
+          // AFTER asking for the stop, so it carries `stopping` and runs once
+          // the thread is idle rather than joining the rows the manual-stop
+          // pause holds back.
           waitingOn:
-            currentThread.status === "stopping"
+            currentThread.status === "stopping" ||
+            isThreadQueueAutoSendPaused(tx, thread.id)
               ? { kind: "stopping" }
               : { kind: "thread-busy" },
           sendAt: null,
@@ -283,9 +294,13 @@ export async function createQueuedMessageForThread(
       isChildThread: thread.parentThreadId !== null,
       messageSource: "queued_message",
       providerId: thread.providerId,
+      initiator: "user",
     });
   }
-  if (currentThread.status === "idle" && hasProviderSession) {
+  if (
+    (currentThread.status === "idle" && hasProviderSession) ||
+    isActiveTurnMainRunIdle(deps, currentThread)
+  ) {
     requestQueuedMessageDispatch(deps, {
       kind: "thread-ready",
       threadId: thread.id,
@@ -816,7 +831,8 @@ export async function sendQueuedMessage(
     releaseQueuedMessageClaims(deps, queuedMessages);
     if (
       isQueuedMessageAutoSendPausedError(error) ||
-      error instanceof ThreadContextClearInProgressError
+      error instanceof ThreadContextClearInProgressError ||
+      error instanceof ParentSystemMessageCompactionActiveError
     ) {
       return toThreadQueuedMessage(queuedMessages[0]!);
     }
@@ -899,7 +915,8 @@ export async function sendNextQueuedMessageIfPresent(
     if (
       isQueuedMessageClaimLostError(error) ||
       isQueuedMessageAutoSendPausedError(error) ||
-      error instanceof ThreadContextClearInProgressError
+      error instanceof ThreadContextClearInProgressError ||
+      error instanceof ParentSystemMessageCompactionActiveError
     ) {
       return false;
     }
@@ -926,6 +943,16 @@ export function releaseStaleQueuedMessageDispatchClaims(
 ): void {
   releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
     claimedBefore: now - STALE_QUEUED_MESSAGE_CLAIM_MS,
+    protectedClaimTokens: [...activeQueuedMessageClaimTokens],
+  });
+}
+
+export function releaseOrphanedQueuedMessageDispatchClaims(
+  deps: Pick<AppDeps, "db" | "hub">,
+  now: number,
+): number {
+  return releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
+    claimedBefore: now + 1,
     protectedClaimTokens: [...activeQueuedMessageClaimTokens],
   });
 }

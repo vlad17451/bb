@@ -61,14 +61,18 @@ import {
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
-import { getActiveThreadPanelOpener } from "./plugin-thread-panel-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { PluginDetailPanelContext } from "./plugin-detail-navigation";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 function PanedRootComposeView() {
   return (
-    <DefaultPaneContextProvider onRequestClose={null} navigateInPane={() => {}}>
+    <DefaultPaneContextProvider
+      paneId="main"
+      onRequestClose={null}
+      navigateInPane={() => {}}
+    >
       <RootComposeView />
     </DefaultPaneContextProvider>
   );
@@ -358,7 +362,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         },
 }));
 
-vi.mock("@/hooks/queries/thread-queries", () => ({
+vi.mock("@/hooks/queries/thread-panel-queries", () => ({
   useThreadStorageFiles: () => ({
     data: undefined,
     error: null,
@@ -413,27 +417,15 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
   }),
 }));
 
-vi.mock("@/hooks/usePromptMentions", () => ({
-  usePromptMentions: () => ({
-    triggers: [],
-    suggestions: [],
-    isLoading: false,
-    isError: false,
-    setQuery: vi.fn(),
-  }),
-}));
+vi.mock("@/hooks/usePromptMentions", async () =>
+  (await import("@/test/fixtures/composer-search")).fakePromptMentionsModule(),
+);
 
-vi.mock("@/hooks/useCommandSuggestions", () => ({
-  useCommandSuggestions: () => ({
-    triggers: [],
-    suggestions: [],
-    isLoading: false,
-    isError: false,
-    hasMore: false,
-    isLoadingMore: false,
-    loadMore: vi.fn(),
-  }),
-}));
+vi.mock("@/hooks/useCommandSuggestions", async () =>
+  (
+    await import("@/test/fixtures/composer-search")
+  ).fakeCommandSuggestionsModule(),
+);
 
 vi.mock("@/hooks/useQuickCreateProject", () => ({
   useQuickCreateProjectController: () => ({
@@ -458,7 +450,7 @@ vi.mock("@/components/dialogs/ProjectMachineSetupDialog", () => ({
 }));
 
 vi.mock("@/views/RootComposeSecondaryContent", () => ({
-  ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS: "",
+  useRootComposePinnedPanelToggleBoxClassName: () => "",
   RootComposeSecondaryContent: ({ children }: { children: ReactNode }) =>
     children,
 }));
@@ -679,9 +671,17 @@ const STORED_REQUEST: NewThreadRequest = {
   input: [{ type: "text", text: "review every PR for slop", mentions: [] }],
 };
 
+const ignoreReportedSubmitError = () => {};
+
+function pressSubmit(): void {
+  void Promise.resolve(latestPromptBoxProps().onSubmit()).catch(
+    ignoreReportedSubmitError,
+  );
+}
+
 async function submit(): Promise<void> {
   await act(async () => {
-    latestPromptBoxProps().onSubmit();
+    pressSubmit();
   });
 }
 
@@ -1119,10 +1119,11 @@ describe("PluginNewThreadComposer seeding", () => {
       );
     });
     const host = latestPromptBoxProps().pluginComposerHost;
+    const submitAsEnter = latestPromptBoxProps().onSubmit;
     view.unmount();
     host.setDraft({ ...host.getCurrent(), text: "Background transcript" });
     await act(async () => {
-      await host.submit({ experimental_data: null }, undefined);
+      await submitAsEnter();
     });
     expect(submitted).toEqual([
       {
@@ -1172,10 +1173,7 @@ describe("PluginNewThreadComposer seeding", () => {
       data: { kind: "draft" } as const,
     };
     await act(async () => {
-      await latestPromptBoxProps().pluginComposerHost.submit(
-        { experimental_data: pluginSubmission.data },
-        pluginSubmission,
-      );
+      await latestPromptBoxProps().onSubmit({ pluginSubmission });
     });
 
     expect(submitted).toHaveLength(1);
@@ -1547,10 +1545,14 @@ describe("PluginNewThreadComposer seeding", () => {
           defaultShortcut: null,
           id: "inspect",
           title: "Inspect project",
-          run: ({ openPanel }) => {
+          run: ({ experimental_panel }) => {
             accepted.push(
-              openPanel({
-                actionId: "inspect-project",
+              experimental_panel.openTab({
+                tab: {
+                  id: "inspect-project",
+                  context: { kind: "thread" },
+                  availability: "action",
+                },
                 title: "Inspect current project",
                 params: { section: "changes" },
               }),
@@ -1560,7 +1562,7 @@ describe("PluginNewThreadComposer seeding", () => {
       ],
       threadId: null,
       projectId: null,
-      openThreadPanel: getActiveThreadPanelOpener(),
+      panel: getFocusedAppPanelController(),
     });
     await act(async () => {
       command.run();
@@ -1588,7 +1590,7 @@ describe("PluginNewThreadComposer seeding", () => {
     ]);
     expect(panel.secondary.activeTabId).toBe(panel.secondary.tabs[0].id);
     view.unmount();
-    expect(getActiveThreadPanelOpener()).toBeNull();
+    expect(getFocusedAppPanelController()).toBeNull();
   });
 
   it("renders the root composer with a loading project picker before the sidebar bootstrap settles", () => {
@@ -2015,8 +2017,8 @@ describe("PluginNewThreadComposer seeding", () => {
     });
 
     act(() => {
-      latestPromptBoxProps().onSubmit();
-      latestPromptBoxProps().onSubmit();
+      pressSubmit();
+      pressSubmit();
     });
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(latestPromptBoxProps().value).toBe("");
@@ -2039,7 +2041,9 @@ describe("PluginNewThreadComposer seeding", () => {
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
 
-    act(() => latestPromptBoxProps().onSubmit());
+    act(() => {
+      pressSubmit();
+    });
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(latestPromptBoxProps().value).toBe("");
     await act(async () => {
@@ -2064,7 +2068,9 @@ describe("PluginNewThreadComposer seeding", () => {
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
 
-    act(() => latestPromptBoxProps().onSubmit());
+    act(() => {
+      pressSubmit();
+    });
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(latestPromptBoxProps().value).toBe("");
     act(() => latestPromptBoxProps().onChange("next thread", []));

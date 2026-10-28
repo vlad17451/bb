@@ -1,3 +1,4 @@
+import { BrowserTabIcon } from "../secondary-panel/BrowserTabIcon";
 import {
   getPanelTabHistoryKey,
   forgetClosedPanelTab,
@@ -13,26 +14,27 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { atom, useAtom, useAtomValue, useStore } from "jotai";
+import { atom, useAtom } from "jotai";
 import { atomFamily } from "jotai-family";
-import type { Host, JsonValue } from "@bb/domain";
-import { jsonValueSchema } from "@bb/domain";
-import type { PluginFixedTabDeclaration } from "@get-bb/plugin-sdk";
+import type { Host } from "@bb/domain";
+import { PluginTabScope, usePluginTabs } from "./PluginTabs";
+import type { PluginNavTabSlot } from "@/lib/plugin-slots";
+import {
+  createPanelActionDestination,
+  runPluginPanelAction,
+} from "./PluginPanelActions";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon, PluginItemIcon } from "@/components/plugin/PluginIcon";
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
-import {
-  useWindowRightPanel,
-  useWindowTitleBarHostsRightPanelToggle,
-} from "@/components/layout/WindowRightPanelToggle";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
+import { getPluginPageSecondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   LazyBrowserTabDeck,
   LazyHostScopedFilePreviewTabContent,
@@ -61,7 +63,10 @@ import {
   type TerminalFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { createFileOpenerOriginalTab } from "./file-opener-tabs";
-import { activateSecondaryPanelTabInState } from "@bb/client-core";
+import {
+  activateSecondaryPanelTabInState,
+  getEnvironmentFilePreviewSourceRef,
+} from "@bb/client-core";
 import {
   terminalQueryScopeForTarget,
   useTerminals,
@@ -69,19 +74,24 @@ import {
 import { usePanelBrowser } from "@/components/secondary-panel/usePanelBrowser";
 import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
+import { usePendingTerminalIds } from "@/components/thread/terminal/pending-terminals";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import {
+  isDesktopBrowserAvailable,
+  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+} from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import {
-  AppFixedTabTargetProvider,
+  FixedTabTargetScope,
   getPluginFixedTabOwnerId,
-  openAppFixedTabFromDestinations,
+  useAppPanelController,
+  useSetFixedTabTarget,
   type AppFixedTabDestination,
-  type AppFixedTabTargetState,
 } from "@/lib/app-fixed-tab-navigation";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
@@ -107,13 +117,6 @@ interface PluginDetailTabMetadata {
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
 );
-interface FixedTabSessionTarget {
-  sequence: number;
-  target: JsonValue;
-}
-const fixedTabTargetAtomFamily = atomFamily((_targetId: string) =>
-  atom<FixedTabSessionTarget | null>(null),
-);
 
 function marketplacePluginDetailTab(pluginId: string) {
   return {
@@ -125,7 +128,6 @@ function marketplacePluginDetailTab(pluginId: string) {
 function PluginFixedTabContent({
   fixedTabOwnerId,
   isOpen,
-  panelGeneration,
   panelId,
   panelStateId,
   pluginId,
@@ -134,52 +136,27 @@ function PluginFixedTabContent({
 }: {
   fixedTabOwnerId: string;
   isOpen: boolean;
-  panelGeneration: number;
   panelId: string;
   panelStateId: string;
   pluginId: string;
-  registration: PluginFixedTabDeclaration;
+  registration: Extract<PluginNavTabSlot, { availability: "fixed" }>;
   subPath: string;
 }) {
-  const targetStore = useStore();
-  const targetAtom = fixedTabTargetAtomFamily(
-    `${panelStateId}\0${registration.id}`,
-  );
-  const targetSnapshot = useAtomValue(targetAtom);
-  const targetState = useMemo<AppFixedTabTargetState | null>(() => {
-    if (targetSnapshot === null) return null;
-    const { sequence } = targetSnapshot;
-    return {
-      ...targetSnapshot,
-      ownerId: fixedTabOwnerId,
-      tabId: registration.id,
-      clear: () => {
-        targetStore.set(targetAtom, (current) =>
-          current?.sequence === sequence ? null : current,
-        );
-      },
-    };
-  }, [
-    fixedTabOwnerId,
-    registration.id,
-    targetAtom,
-    targetSnapshot,
-    targetStore,
-  ]);
   if (!isOpen) return null;
   const FixedTabComponent = registration.component;
   return (
-    <PluginSlotMount
-      key={`${pluginId}/${panelId}/${registration.id}/${panelGeneration}`}
-      pluginId={pluginId}
-      slotKind="navPanelFixedTab"
-      slotId={registration.id}
-      instanceId={panelId}
+    <PluginTabScope
+      slot={registration}
+      instanceId={`nav-panel/${pluginId}/${panelId}`}
     >
-      <AppFixedTabTargetProvider state={targetState}>
+      <FixedTabTargetScope
+        ownerId={fixedTabOwnerId}
+        tabId={registration.id}
+        targetKey={`${panelStateId}\0${registration.id}`}
+      >
         <FixedTabComponent subPath={subPath} />
-      </AppFixedTabTargetProvider>
-    </PluginSlotMount>
+      </FixedTabTargetScope>
+    </PluginTabScope>
   );
 }
 
@@ -220,6 +197,34 @@ export function PluginPanelRightPanelHost({
       (candidate) =>
         candidate.pluginId === pluginId && candidate.path === panelPath,
     ) ?? null;
+  const registeredTabs = usePluginTabs(
+    panel === null
+      ? null
+      : { kind: "nav-panel", panelId: panel.id, pluginId, subPath },
+  );
+  const pageTabs = useMemo(
+    () =>
+      registeredTabs.slots.filter(
+        (tab): tab is PluginNavTabSlot => tab.context.kind === "nav-panel",
+      ),
+    [registeredTabs.slots],
+  );
+  const pageFixedTabs = useMemo(
+    () =>
+      pageTabs.filter(
+        (tab): tab is Extract<PluginNavTabSlot, { availability: "fixed" }> =>
+          tab.availability === "fixed",
+      ),
+    [pageTabs],
+  );
+  const pageActions = useMemo(
+    () =>
+      pageTabs.filter(
+        (tab): tab is Extract<PluginNavTabSlot, { availability: "action" }> =>
+          tab.availability === "action",
+      ),
+    [pageTabs],
+  );
   const paneContext = useOptionalPaneContext();
   const isFocused = paneContext?.isFocused ?? true;
   const isHostedBySplitWorkspace = paneContext?.secondaryPanelHost != null;
@@ -237,18 +242,18 @@ export function PluginPanelRightPanelHost({
   });
   const fixedViewTabs = useMemo<readonly PluginPageFixedPanelTab[]>(
     () =>
-      (panel?.fixedTabs ?? []).map((fixedTab) =>
+      pageFixedTabs.map((fixedTab) =>
         createPluginPageFixedPanelTab({
           fixedTabId: fixedTab.id,
           pageId: panel?.id ?? panelPath,
           pluginId,
         }),
       ),
-    [panel, panelPath, pluginId],
+    [pageFixedTabs, panel, panelPath, pluginId],
   );
   const panelState = useReconciledFixedPanelTabsState({
     fixedTabs: fixedViewTabs,
-    isAuthoritative: panel !== null,
+    isAuthoritative: registeredTabs.isReady,
     openFirstFixedTabWhenEmpty: true,
     panelStateId,
     syncThreadId: null,
@@ -338,12 +343,14 @@ export function PluginPanelRightPanelHost({
       new Map((terminalSessions ?? []).map((session) => [session.id, session])),
     [terminalSessions],
   );
+  const pendingTerminalIds = usePendingTerminalIds();
   const {
     activateTab,
     activeBrowserTab,
     browserTabs,
     closeTab,
     openTab,
+    openPluginPanel,
     orderedSecondaryFileTabs,
     reopenClosedTab,
     reorderTab,
@@ -380,7 +387,8 @@ export function PluginPanelRightPanelHost({
       activeTerminalQuery.isLoading ||
       activeTerminalQuery.error !== null ||
       terminalSessions === undefined ||
-      terminalsById.has(activeTerminalTab.terminalId)
+      terminalsById.has(activeTerminalTab.terminalId) ||
+      pendingTerminalIds.starting.has(activeTerminalTab.terminalId)
     ) {
       return;
     }
@@ -390,6 +398,7 @@ export function PluginPanelRightPanelHost({
     activeTerminalQuery.isLoading,
     activeTerminalTab,
     closeTab,
+    pendingTerminalIds,
     terminalSessions,
     terminalsById,
   ]);
@@ -434,14 +443,14 @@ export function PluginPanelRightPanelHost({
     },
     [historyContextKey, revealPanel],
   );
-  const targetStore = useStore();
+  const setFixedTabTarget = useSetFixedTabTarget();
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
     pluginId,
     panel?.id ?? panelPath,
   );
   const fixedTabDestinations = useMemo<readonly AppFixedTabDestination[]>(
     () =>
-      (panel?.fixedTabs ?? []).flatMap((registration) => {
+      pageFixedTabs.flatMap((registration) => {
         const tab = fixedViewTabs.find(
           (candidate) => candidate.fixedTabId === registration.id,
         );
@@ -452,32 +461,17 @@ export function PluginPanelRightPanelHost({
               ownerId: fixedTabOwnerId,
               tabId: registration.id,
             },
+            panelTabId: () => tab.id,
             open: (target) => {
-              if (target !== undefined) {
-                const result = jsonValueSchema.safeParse(target);
-                if (
-                  !result.success ||
-                  registration.experimental_target === undefined
-                ) {
-                  return false;
-                }
-                try {
-                  if (!registration.experimental_target.validate(result.data)) {
-                    return false;
-                  }
-                } catch {
-                  return false;
-                }
-                targetStore.set(
-                  fixedTabTargetAtomFamily(
-                    `${panelStateId}\0${registration.id}`,
-                  ),
-                  (current) => ({
-                    sequence: (current?.sequence ?? 0) + 1,
-                    target: result.data,
-                  }),
-                );
-              }
+              if (
+                target !== undefined &&
+                !setFixedTabTarget(
+                  `${panelStateId}\0${registration.id}`,
+                  registration.experimental_target,
+                  target,
+                )
+              )
+                return false;
               selectPersistedPanelTab();
               updatePanelState((state) =>
                 activateSecondaryPanelTabInState(state, tab.id),
@@ -492,17 +486,75 @@ export function PluginPanelRightPanelHost({
       fixedViewTabs,
       fixedTabOwnerId,
       panelStateId,
-      panel?.fixedTabs,
+      pageFixedTabs,
       revealPanel,
       selectPersistedPanelTab,
-      targetStore,
+      setFixedTabTarget,
       updatePanelState,
     ],
   );
-  const openFixedTab = useCallback(
-    (intent: Parameters<typeof openAppFixedTabFromDestinations>[1]) =>
-      openAppFixedTabFromDestinations(fixedTabDestinations, intent),
-    [fixedTabDestinations],
+  const panelDestinations = useMemo(
+    () => [
+      ...fixedTabDestinations,
+      ...pageActions.map((action) => ({
+        ...createPanelActionDestination({
+          action,
+          openPluginPanel: (args) => {
+            selectPersistedPanelTab();
+            openPluginPanel(args);
+            revealPanel();
+          },
+        }),
+        tab: { ownerId: fixedTabOwnerId, tabId: action.id },
+      })),
+    ],
+    [
+      fixedTabDestinations,
+      pageActions,
+      openPluginPanel,
+      revealPanel,
+      selectPersistedPanelTab,
+      fixedTabOwnerId,
+    ],
+  );
+  const hidePanel = useCallback(() => {
+    setIsPluginDetailPanelOpen(false);
+    setIsPanelFullPage(false);
+    if (isCompactViewport) {
+      closeCompactDrawer();
+      return;
+    }
+    closePersistedPanel();
+  }, [closeCompactDrawer, closePersistedPanel, isCompactViewport]);
+  const panelController = useAppPanelController({
+    activeTabId: isOpen ? (activeTab?.id ?? null) : null,
+    close: hidePanel,
+    destinations: panelDestinations,
+    isFocused: isFocused && panel !== null,
+  });
+  const pluginActions = useMemo(
+    () =>
+      pageActions.map((action) => ({
+        id: `plugin-action:${action.pluginId}:${action.id}`,
+        pluginId: action.pluginId,
+        icon: action.icon,
+        title: action.title,
+        tooltip: action.tooltip,
+        onSelect: () => {
+          if (panel === null) return;
+          runPluginPanelAction({
+            action,
+            context: {
+              kind: "nav-panel",
+              pluginId,
+              panelId: panel.id,
+              subPath,
+            },
+            panel: panelController,
+          });
+        },
+      })),
+    [pageActions, panel, pluginId, subPath, panelController],
   );
   const revealPersistedPanel = useCallback(() => {
     selectPersistedPanelTab();
@@ -532,20 +584,11 @@ export function PluginPanelRightPanelHost({
   const navigationCapabilities = useMemo(
     () => ({
       openFilePreview: openLiveFilePreview,
-      openFixedTab,
+      panel: panelController,
       openTerminal: terminals.open,
     }),
-    [openFixedTab, openLiveFilePreview, terminals.open],
+    [panelController, openLiveFilePreview, terminals.open],
   );
-  const hidePanel = useCallback(() => {
-    setIsPluginDetailPanelOpen(false);
-    setIsPanelFullPage(false);
-    if (isCompactViewport) {
-      closeCompactDrawer();
-      return;
-    }
-    closePersistedPanel();
-  }, [closeCompactDrawer, closePersistedPanel, isCompactViewport]);
   const openNewTab = useCallback(() => {
     selectPersistedPanelTab();
     openTab({ kind: "new-tab" });
@@ -553,21 +596,18 @@ export function PluginPanelRightPanelHost({
   }, [openTab, revealPanel, selectPersistedPanelTab]);
   const togglePanel = useCallback(() => {
     if (isOpen) {
-      hidePanel();
+      panelController.close();
       return;
     }
     if (activeTab === null) openTab({ kind: "new-tab" });
     revealPanel();
-  }, [activeTab, hidePanel, isOpen, openTab, revealPanel]);
+  }, [activeTab, isOpen, openTab, panelController, revealPanel]);
 
   useAppCommandHandler("panel.toggle", () => {
     if (!isFocused || panel === null) return false;
     togglePanel();
     return true;
   });
-  useWindowRightPanel({ isOpen, enabled: isFocused && panel !== null });
-  const titleBarHostsRightPanelToggle =
-    useWindowTitleBarHostsRightPanelToggle();
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused || panel === null) return false;
     openNewTab();
@@ -606,6 +646,7 @@ export function PluginPanelRightPanelHost({
     return true;
   });
 
+  const isSidebarFramed = useIsSidebarFramed();
   const [togglePortalTarget, setTogglePortalTarget] =
     useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
@@ -712,14 +753,14 @@ export function PluginPanelRightPanelHost({
 
   const fixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
     () =>
-      (panel?.fixedTabs ?? []).flatMap((registration) => {
+      pageFixedTabs.flatMap((registration) => {
         const tab = fixedViewTabs.find(
           (candidate) => candidate.fixedTabId === registration.id,
         );
         if (tab === undefined) return [];
         return [
           {
-            ariaLabel: registration.title,
+            ariaLabel: registration.tooltip ?? registration.title,
             contentFillsRegion: registration.layout === "flush",
             label: registration.title,
             leadingVisual: (
@@ -731,12 +772,12 @@ export function PluginPanelRightPanelHost({
             ),
             onSelect: () => {
               selectPersistedPanelTab();
-              openFixedTab({
-                surface: { kind: "current" },
+              panelController.openTab({
                 tab: {
                   ownerId: fixedTabOwnerId,
                   tabId: registration.id,
                 },
+                availability: "fixed",
               });
             },
             renderContent: () =>
@@ -744,7 +785,6 @@ export function PluginPanelRightPanelHost({
                 <PluginFixedTabContent
                   fixedTabOwnerId={fixedTabOwnerId}
                   isOpen={isOpen}
-                  panelGeneration={panel.generation}
                   panelId={panel.id}
                   panelStateId={panelStateId}
                   pluginId={pluginId}
@@ -753,15 +793,16 @@ export function PluginPanelRightPanelHost({
                 />
               ),
             tab,
-            title: registration.title,
+            title: registration.tooltip ?? registration.title,
           },
         ];
       }),
     [
       fixedViewTabs,
+      pageFixedTabs,
       fixedTabOwnerId,
       isOpen,
-      openFixedTab,
+      panelController,
       panel,
       panelStateId,
       pluginId,
@@ -783,6 +824,8 @@ export function PluginPanelRightPanelHost({
               isPanelOpen={isOpen}
               isPanelPersistedOpen={panelState.secondary.isOpen}
               onAutoFocusHandled={terminals.handleAutoFocusHandled}
+              onCloseStart={() => terminals.close(tab.terminalId)}
+              onRetryStart={() => terminals.retryStart(tab.terminalId)}
               target={tab.target}
               terminalId={tab.terminalId}
             />
@@ -808,11 +851,11 @@ export function PluginPanelRightPanelHost({
                 activateTab(tab.id);
                 terminals.start();
               }}
+              pluginActions={pluginActions}
               showFileSearch={false}
               startTerminalDisabled={!terminals.canStart}
               startTerminalTrailing={
                 <TerminalHostSelector
-                  disabled={terminals.isStarting}
                   hosts={terminalHosts}
                   isLoading={hostsQuery.isLoading}
                   onChange={setPreferredTerminalHostId}
@@ -829,7 +872,6 @@ export function PluginPanelRightPanelHost({
               isPanelOpen={isOpen}
               lineRange={tab.lineRange}
               source={tab.source}
-              statusLabel={tab.statusLabel}
             />
           );
         case "host-file-preview":
@@ -864,7 +906,12 @@ export function PluginPanelRightPanelHost({
           return (
             <PluginPanelTabContent
               tab={tab}
-              context={{ kind: "new-thread", projectId: null }}
+              context={{
+                kind: "nav-panel",
+                pluginId,
+                panelId: panel?.id ?? panelPath,
+                subPath,
+              }}
               fileOpenerOriginal={
                 originalTab === null ? undefined : renderTabContent(originalTab)
               }
@@ -875,6 +922,11 @@ export function PluginPanelRightPanelHost({
     },
     [
       activateTab,
+      pluginActions,
+      panel,
+      panelPath,
+      pluginId,
+      subPath,
       hostsQuery.isLoading,
       isOpen,
       openBrowser,
@@ -905,7 +957,7 @@ export function PluginPanelRightPanelHost({
               {
                 ...shared,
                 label: label || "Browser",
-                leadingVisual: <Icon name="Globe" className="size-3.5" />,
+                leadingVisual: <BrowserTabIcon tabId={tab.id} />,
                 statusLabel: null,
                 onClose: () => closeTab(tab.id),
               },
@@ -951,7 +1003,7 @@ export function PluginPanelRightPanelHost({
                 leadingVisual: <Icon name="File" className="size-3.5" />,
                 statusLabel:
                   tab.kind === "workspace-file-preview"
-                    ? tab.statusLabel
+                    ? getEnvironmentFilePreviewSourceRef(tab.source)
                     : null,
                 onClose: () => closeTab(tab.id),
               },
@@ -1035,6 +1087,7 @@ export function PluginPanelRightPanelHost({
             onNativeFocus={onNativeFocus}
             threadId={panelStateId}
             onUpdate={updateBrowserTab}
+            onOpenInNewTab={panelBrowser.open}
           />
         );
       const drawerFallback = renderDeck(
@@ -1045,7 +1098,6 @@ export function PluginPanelRightPanelHost({
         <LazyThreadSecondaryPanel
           drawerFallback={drawerFallback}
           activeTab={activeTab}
-          canUseGitUi={false}
           metadataContent={null}
           tabs={tabs}
           splitPanelStateId={
@@ -1061,11 +1113,12 @@ export function PluginPanelRightPanelHost({
           }
           isOpen={isOpen}
           fixedTabs={fixedTabs}
+          areFixedTabsReady={registeredTabs.isReady}
           showConversationCollapseControl={activePluginDetailId !== null}
           showNewTabButton={activePluginDetailId === null}
           onPanelFocus={() => undefined}
-          onCollapse={hidePanel}
-          onClose={hidePanel}
+          onCollapse={panelController.close}
+          onClose={panelController.close}
           onOpenNewTab={openNewTab}
           isConversationCollapsed={isMainCollapsed}
           onToggleConversationCollapse={onToggleMainCollapse}
@@ -1081,8 +1134,10 @@ export function PluginPanelRightPanelHost({
       panelBrowser.addressFocusRequest,
       browserTabs,
       fixedTabs,
+      registeredTabs.isReady,
       panelBrowser.handleAddressFocusRequestConsumed,
-      hidePanel,
+      panelBrowser.open,
+      panelController,
       isOpen,
       openNewTab,
       panelStateId,
@@ -1105,7 +1160,8 @@ export function PluginPanelRightPanelHost({
       <SecondaryPanelLayout
         open={isOpen}
         onToggle={togglePanel}
-        onClose={hidePanel}
+        onSwipeOpen={togglePanel}
+        onClose={panelController.close}
         panelGroupKey={`plugin-panel-host:${panelHostId}`}
         resetKey={panelStateId}
         contentKey={panelStateId}
@@ -1119,6 +1175,10 @@ export function PluginPanelRightPanelHost({
         main={children}
         composerHost={null}
         renderPanel={renderPanel}
+        widthPercentAtom={getPluginPageSecondaryPanelWidthPercentAtom({
+          panelPath,
+          pluginId,
+        })}
       />
     </div>
   );
@@ -1127,7 +1187,6 @@ export function PluginPanelRightPanelHost({
     <>
       {panel !== null &&
       togglePortalTarget !== null &&
-      !titleBarHostsRightPanelToggle &&
       !isOpen &&
       !isHostedBySplitWorkspace
         ? createPortal(
@@ -1137,7 +1196,10 @@ export function PluginPanelRightPanelHost({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className={RIGHT_PANEL_TOGGLE_CLASS}
+                  className={cn(
+                    RIGHT_PANEL_TOGGLE_CLASS,
+                    isSidebarFramed && MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+                  )}
                   aria-label={toggleLabel}
                   aria-pressed={isOpen}
                   onPointerEnter={preloadThreadSecondaryPanel}
@@ -1163,6 +1225,7 @@ export function PluginPanelRightPanelHost({
         <PluginDetailRouteNavigationProvider
           onOpenPluginDetail={openPluginDetail}
         >
+          {registeredTabs.observers}
           {routedPage}
         </PluginDetailRouteNavigationProvider>
       </AppNavigationHostProvider>

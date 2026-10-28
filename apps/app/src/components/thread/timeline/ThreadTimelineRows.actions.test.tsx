@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
@@ -841,6 +842,54 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).not.toContain('aria-label="Add to chat"');
   });
 
+  it.each(["mixed", "code", "partial-link", "boundary-spill"] as const)(
+    "adds a %s selection to chat with its Markdown preserved",
+    async (mode) => {
+      const onSelectionAddToChat = vi.fn();
+      const markdown =
+        "- **First** [docs](https://example.com)\n- Second\n\n```ts\nconst x = 1;\n\nconst y = 2;\n```";
+      const { container } = renderWithRouter(
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({ role: "assistant", text: markdown }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+          onSelectionAddToChat={onSelectionAddToChat}
+          workspaceRootPath={undefined}
+        />,
+      );
+      const prose = container.querySelector("[data-sidebar-swipe-selectable]")!;
+      const range = document.createRange();
+      let expected = markdown;
+      if (mode === "code") {
+        range.selectNodeContents(prose.querySelector("pre code")!);
+        expected = "const x = 1;\n\nconst y = 2;";
+      } else if (mode === "partial-link") {
+        const text = prose.querySelector("a")!.firstChild!;
+        range.setStart(text, 1);
+        range.setEnd(text, 3);
+        expected = "[oc](https://example.com)";
+      } else {
+        range.selectNodeContents(prose);
+        if (mode === "boundary-spill") range.setEndAfter(prose);
+      }
+      const rect = new DOMRect(10, 30, 100, 20);
+      Object.defineProperties(range, {
+        getBoundingClientRect: { value: () => rect },
+        getClientRects: { value: () => ({ length: 1, item: () => rect }) },
+      });
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      fireEvent(document, new Event("selectionchange"));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Add to chat" }),
+      );
+      expect(onSelectionAddToChat).toHaveBeenCalledWith(expected);
+      expect(selection.rangeCount).toBe(0);
+    },
+  );
+
   it("does not let the previously selected row clear a new row selection", async () => {
     const onSelectionAddToChat = vi.fn();
     const frameCallbacks: FrameRequestCallback[] = [];
@@ -1289,30 +1338,35 @@ describe("ThreadTimelineRows actions", () => {
         { id: "summarize", title: "Summarize", icon: "Zap", run },
       ]),
     );
-    const onOpenPluginPanel = vi.fn().mockReturnValue(true);
+    const panel = {
+      openTab: vi.fn(() => true),
+      toggleTab: vi.fn(() => true),
+      close: vi.fn(() => true),
+    };
     const { container } = renderWithRouter(
-      <ThreadTimelineRows
-        threadId="thr_main"
-        timelineRows={[
-          conversationRow({
-            id: "user_row",
-            role: "user",
-            text: "A user request.",
-            sourceSeqEnd: 7,
-            threadId: "thr_main",
-          }),
-          conversationRow({
-            id: "assistant_row",
-            role: "assistant",
-            text: "An assistant answer.",
-            sourceSeqEnd: 9,
-            threadId: "thr_main",
-          }),
-        ]}
-        onOpenPluginPanel={onOpenPluginPanel}
-        threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
-      />,
+      <AppNavigationHostProvider capabilities={{ panel }}>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({
+              id: "user_row",
+              role: "user",
+              text: "A user request.",
+              sourceSeqEnd: 7,
+              threadId: "thr_main",
+            }),
+            conversationRow({
+              id: "assistant_row",
+              role: "assistant",
+              text: "An assistant answer.",
+              sourceSeqEnd: 9,
+              threadId: "thr_main",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+          workspaceRootPath={undefined}
+        />
+      </AppNavigationHostProvider>,
     );
 
     const userRow = container.querySelector(
@@ -1340,14 +1394,24 @@ describe("ThreadTimelineRows actions", () => {
       experimental_messageSeq: 9,
     });
     expect(context.selectedText).toBeUndefined();
+    const panelTab = {
+      id: "panel",
+      context: { kind: "thread" },
+      availability: "action",
+    } as const;
+    expect(
+      context.experimental_panel.toggleTab({ tab: panelTab, params: { a: 1 } }),
+    ).toBe(true);
     expect(context.openPanel({ actionId: "panel", params: { a: 1 } })).toBe(
       true,
     );
-    expect(onOpenPluginPanel).toHaveBeenCalledWith({
-      pluginId: "demo",
-      actionId: "panel",
+    const intent = {
+      tab: { ownerId: "plugin-thread:demo", tabId: "panel" },
+      availability: "action",
       params: { a: 1 },
-    });
+    };
+    expect(panel.toggleTab).toHaveBeenCalledWith(intent);
+    expect(panel.openTab).toHaveBeenCalledWith(intent);
   });
 
   it("omits plugin message actions when the surface has no thread identity", () => {

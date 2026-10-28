@@ -79,6 +79,7 @@ const piAssistantUsageSchema = z
     output: z.number().optional(),
     cacheRead: z.number().nonnegative().optional().catch(undefined),
     cacheWrite: z.number().nonnegative().optional().catch(undefined),
+    cacheWrite1h: z.number().nonnegative().optional().catch(undefined),
     totalTokens: z.number().optional(),
   })
   .passthrough();
@@ -112,6 +113,13 @@ const piCustomMessageBoundaryEventSchema = z
         display: z.boolean(),
       })
       .passthrough(),
+  })
+  .passthrough();
+
+const piAssistantMessageBoundaryEventSchema = z
+  .object({
+    type: z.enum(["message_end", "message_start"]),
+    message: piAssistantMessageSchema,
   })
   .passthrough();
 
@@ -446,10 +454,25 @@ export function createPiDeltaTranslator(
     string,
     ThreadEventTokenUsageBreakdown
   >();
+  const promptCacheTtlMsByThreadId = new Map<string, number>();
+  const closedAssistantStreams = new Set<string>();
 
   function resetThread(threadId: string): void {
     cumulativeTokensByThreadId.delete(threadId);
+    promptCacheTtlMsByThreadId.delete(threadId);
     clearThreadToolShapes({ threadId });
+    const prefix = `${threadId} `;
+    for (const key of [...closedAssistantStreams]) {
+      if (key.startsWith(prefix)) {
+        closedAssistantStreams.delete(key);
+      }
+    }
+  }
+
+  function assistantStreamKey(
+    context: PiDeltaTranslationContext | undefined,
+  ): string {
+    return `${context?.threadId ?? ""} ${context?.parentToolCallId ?? ""}`;
   }
 
   function toolShapeKey(
@@ -655,6 +678,35 @@ export function createPiDeltaTranslator(
 
       case "message_end":
       case "message_start": {
+        const assistantEvent =
+          piAssistantMessageBoundaryEventSchema.safeParse(event);
+        if (assistantEvent.success) {
+          const streamKey = assistantStreamKey(context);
+          const message = assistantEvent.data.message;
+          if (assistantEvent.data.type === "message_start") {
+            closedAssistantStreams.delete(streamKey);
+            return [];
+          }
+          if (
+            message.stopReason === "error" ||
+            message.stopReason === "aborted"
+          ) {
+            return [];
+          }
+          closedAssistantStreams.add(streamKey);
+          const text = extractAssistantText(message);
+          if (!text) {
+            return [];
+          }
+          return [
+            {
+              kind: "item.textClose",
+              key: { channel: ASSISTANT_STREAM_KEY, ...parentRefField },
+              channel: "agentMessage",
+              text,
+            },
+          ];
+        }
         const piEvent = piCustomMessageBoundaryEventSchema.safeParse(event);
         if (!piEvent.success) {
           return [];
@@ -807,7 +859,15 @@ export function createPiDeltaTranslator(
             ...(piEvent.data.willRetry ? { willRetry: true } : {}),
           });
         }
-        if (lastAssistant && !piEvent.data.settlementOnly && !settlementError) {
+        const assistantClosed = closedAssistantStreams.delete(
+          assistantStreamKey(context),
+        );
+        if (
+          lastAssistant &&
+          !assistantClosed &&
+          !piEvent.data.settlementOnly &&
+          !settlementError
+        ) {
           const text = extractAssistantText(lastAssistant);
           if (text) {
             deltas.push({
@@ -828,11 +888,17 @@ export function createPiDeltaTranslator(
             usage,
           );
           cumulativeTokensByThreadId.set(threadKey, total);
+          const reportedTtlMs = toPromptCacheTtlMs(lastAssistant);
+          if (reportedTtlMs !== undefined) {
+            promptCacheTtlMsByThreadId.set(threadKey, reportedTtlMs);
+          }
+          const promptCacheTtlMs = promptCacheTtlMsByThreadId.get(threadKey);
           deltas.push({
             kind: "usage",
             total,
             last: usage,
             modelContextWindow: resolveModelContextWindow(lastAssistant),
+            ...(promptCacheTtlMs === undefined ? {} : { promptCacheTtlMs }),
           });
         }
         if (piEvent.data.deferSettlement) return deltas;
@@ -1106,6 +1172,21 @@ function extractPiCommandExecutionOutput(content: unknown): string | undefined {
 function extractPiToolProgressText(event: PiToolExecutionUpdateEvent): string {
   const text = extractResultText(event.partialResult).trim();
   return text.length > 0 ? text : `${event.toolName} progress update`;
+}
+
+const PI_ONE_HOUR_CACHE_TTL_MS = 60 * 60_000;
+const PI_FIVE_MINUTE_CACHE_TTL_MS = 5 * 60_000;
+
+function toPromptCacheTtlMs(
+  lastAssistant: PiAssistantMessage | undefined,
+): number | undefined {
+  const usage = lastAssistant?.usage;
+  if (usage?.cacheWrite1h === undefined) return undefined;
+  if (usage.cacheWrite1h > 0) return PI_ONE_HOUR_CACHE_TTL_MS;
+  if (toNonNegativeNumber(usage.cacheWrite) > 0) {
+    return PI_FIVE_MINUTE_CACHE_TTL_MS;
+  }
+  return undefined;
 }
 
 function toAssistantUsageBreakdown(

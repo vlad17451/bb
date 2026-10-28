@@ -1,11 +1,13 @@
-import type { PromptInput, ThreadRuntimeDisplayStatus } from "@bb/domain";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  type PromptInput,
+  type ThreadRuntimeDisplayStatus,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   buildAutoFollowUpRequest,
-  buildCreateQueuedFollowUpRequest,
   buildFollowUpShortcutRequest,
   buildFollowUpSubmitMode,
-  buildSideChatSubmitMode,
   canSubmitFollowUpShortcut,
   resolveDefaultExecutionOptionsState,
   shouldQueueFollowUpMessage,
@@ -103,6 +105,7 @@ describe("threadDetailPromptSubmission", () => {
   it("builds auto follow-up requests with selected execution options", () => {
     expect(
       buildAutoFollowUpRequest({
+        compactFirst: false,
         execution: {
           model: "gpt-5",
           permissionMode: "full",
@@ -126,9 +129,26 @@ describe("threadDetailPromptSubmission", () => {
     });
   });
 
+  it.each([
+    [textInput, true],
+    [createStandaloneBuiltinCompactCommandInput(), false],
+  ])(
+    "asks to compact first only for a message to send after compacting %#",
+    (input, expected) => {
+      const request = buildAutoFollowUpRequest({
+        compactFirst: true,
+        execution: null,
+        input,
+        threadId: "thread-1",
+      });
+      expect(request?.compactFirst === true).toBe(expected);
+    },
+  );
+
   it("omits execution overrides when building auto follow-up requests without concrete defaults", () => {
     expect(
       buildAutoFollowUpRequest({
+        compactFirst: false,
         execution: null,
         input: textInput,
         threadId: "thread-1",
@@ -140,9 +160,10 @@ describe("threadDetailPromptSubmission", () => {
     });
   });
 
-  it("omits unsupported service tier when queueing a follow-up", () => {
+  it("omits unsupported service tier from auto follow-up requests", () => {
     expect(
-      buildCreateQueuedFollowUpRequest({
+      buildAutoFollowUpRequest({
+        compactFirst: false,
         execution: {
           model: "gpt-5",
           permissionMode: "accept-edits",
@@ -161,6 +182,7 @@ describe("threadDetailPromptSubmission", () => {
     ).toEqual({
       id: "thread-1",
       input: textInput,
+      mode: "queue-if-active",
       model: "gpt-5",
       permissionMode: "accept-edits",
       reasoningLevel: "high",
@@ -169,19 +191,6 @@ describe("threadDetailPromptSubmission", () => {
         reasoningLevel: "explicit",
         permissionMode: "explicit",
       },
-    });
-  });
-
-  it("omits execution overrides when queueing a follow-up without concrete defaults", () => {
-    expect(
-      buildCreateQueuedFollowUpRequest({
-        execution: null,
-        input: textInput,
-        threadId: "thread-1",
-      }),
-    ).toEqual({
-      id: "thread-1",
-      input: textInput,
     });
   });
 
@@ -365,60 +374,6 @@ describe("threadDetailPromptSubmission", () => {
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "starting",
-      }),
-    ).toEqual({ kind: "blocked", reason: "pending-interaction" });
-  });
-
-  it("blocks a draft side chat until inherited execution options load", () => {
-    const onStop = () => undefined;
-
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: null,
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: true,
-        isStopRequested: false,
-        onStop,
-        runtimeDisplayStatus: "provisioning",
-      }),
-    ).toEqual({ kind: "blocked", reason: "loading-execution-options" });
-
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: null,
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: false,
-        isStopRequested: false,
-        onStop,
-        runtimeDisplayStatus: "idle",
-      }),
-    ).toEqual({ kind: "ready" });
-  });
-
-  it("offers stop-capable queue mode for active side-chat child threads", () => {
-    const onStop = () => undefined;
-
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: "thr_side",
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: false,
-        isStopRequested: false,
-        onStop,
-        runtimeDisplayStatus: "active",
-      }),
-    ).toEqual({ kind: "queue", onStop });
-  });
-
-  it("blocks child side chats with a pending interaction", () => {
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: "thr_side",
-        hasPendingInteraction: true,
-        isDefaultExecutionOptionsLoading: false,
-        isStopRequested: false,
-        onStop: () => undefined,
-        runtimeDisplayStatus: "active",
       }),
     ).toEqual({ kind: "blocked", reason: "pending-interaction" });
   });

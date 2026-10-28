@@ -179,9 +179,13 @@ function createUiPreferences(): UiPreferenceEntries {
     "sidebar.visiblePluginPanels": uiPreferenceEntry(
       "sidebar.visiblePluginPanels",
     ),
+    "sidebar.navigationProvider": uiPreferenceEntry(
+      "sidebar.navigationProvider",
+    ),
     "sidebar.threadListProvider": uiPreferenceEntry(
       "sidebar.threadListProvider",
     ),
+    "composer.provider": uiPreferenceEntry("composer.provider"),
     "infoPanel.collapsedSections": uiPreferenceEntry(
       "infoPanel.collapsedSections",
     ),
@@ -540,6 +544,7 @@ export class DemoWorld {
       contextBoundarySeq: null,
       completedTurnDisplay: "flat",
       maxSeq: seq,
+      tag: `demo:${threadId}:${seq}`,
       activePromptMode: null,
       activeThinking: null,
       activeWorkflows: [],

@@ -21,6 +21,7 @@ Messaging:
     --reasoning-level <level>              Reasoning level override
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --compact-first                        Compact the idle thread's context, then send when compaction finishes
     --file <path>                          CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                         CLI-local absolute path, file: URL, or uploaded image path
 
@@ -39,8 +40,9 @@ Messaging:
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
-  Code and Codex threads). Plain "/plan ..." text is not recognized; it reaches
-  the provider as literal text. Approve or deny the proposed plan with
+  Code and Codex threads). Providers without a declared plan action reject
+  --plan with an error for both spawn and tell. Plain "/plan ..." text is not
+  recognized; it reaches the provider as literal text. Approve or deny the proposed plan with
   `bb thread interactions`; `bb thread cancel-plan` leaves Plan mode early.
   SDK callers build the same input with
   `createBuiltinPlanCommandTextInput(text)` from `@bb/sdk` and pass it as
@@ -58,6 +60,7 @@ Ownership:
     --model <model>                        Set the sticky model for the next and later turns
     --reasoning-level <level>              Set the sticky reasoning level (provider-dependent)
     --visibility <visibility>              Set visible or hidden
+    --parent-notifications <value>         Set auto, stuck, or off (applies to later outcomes)
 
   Clearing a parent inherits the former parent's section unless --section or
   --clear-section is also supplied. Children released by environment archiving
@@ -137,6 +140,12 @@ Queued messages:
   queued until the workspace is ready.
   `queue delete` discards it instead. Both are always permitted.
 
+  --compact-first runs the same /compact turn as `bb thread compact` and queues
+  the message behind it, so it needs an idle or errored thread whose provider
+  supports manual compaction; it cannot be combined with --send-at. The SDK
+  takes `compactFirst: true` on `threads.send`, which also rejects
+  `mode: "steer"`.
+
   --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
   passed is rejected, as is a bare date, which has no time of day. Several
@@ -144,3 +153,20 @@ Queued messages:
   scheduled spawn creates a `pending` thread and does no environment work (no
   worktree, no setup script) until it is due. The SDK takes `sendAt` in epoch
   milliseconds on `threads.spawn` and `threads.send`.
+
+Application links in messages:
+
+  Use an explicit Markdown link such as `[Review note](reflect://note/Project%20X)`
+  or `[Open issue](linear://issue/ABC-123)`. The receiving user clicks the link
+  to open it on their viewing device; sending or rendering a message never
+  launches an application. Bare custom-scheme text is not auto-linked.
+
+  Enable with `bb settings experiment applicationLinks true` or Settings →
+  Experiments → Application links. BB asks before launching unless the user
+  chose Always allow for that scheme on this BB site and device. Settings →
+  General → Application link approvals can revoke saved choices. Executable
+  web schemes and reserved editor-action
+  schemes remain blocked. Existing editor file links keep their file-opening
+  behavior. Desktop and native mobile clients need application-link support
+  (mobile bridge version 3); older clients show an update message. Web browsers
+  handle their own OS handoff and cannot reliably report missing applications.

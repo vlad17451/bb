@@ -62,20 +62,40 @@ describe("public ui preferences", () => {
     },
   );
 
-  it("ignores stored rows for retired sidebar provider preferences", async () => {
+  it("reads Info sections collapsed under core's old Git ids as the Git plugin's sections", async () => {
     await withTestHarness(async (harness) => {
-      const retired = ["sidebar.navigationProvider", "sidebar.headerProvider"];
-      for (const key of retired) {
-        overwriteStoredUiPreference(harness.deps.db, {
-          key,
-          valueJson: JSON.stringify("garden/icons"),
-        });
-        harness.deps.db.$client
-          .prepare(
-            "INSERT INTO ui_preference_defaults (key, value_json) VALUES (?, ?)",
-          )
-          .run(key, JSON.stringify("garden/icons"));
-      }
+      overwriteStoredUiPreference(harness.deps.db, {
+        key: "infoPanel.collapsedSections",
+        valueJson: JSON.stringify([
+          "commits",
+          "uncommittedChanges",
+          "forks",
+          "bb--git/commits",
+        ]),
+      });
+      const body = (await readJson(await listPreferences(harness))) as {
+        preferences: Record<string, { value: unknown }>;
+      };
+      expect(body.preferences["infoPanel.collapsedSections"]?.value).toEqual([
+        "bb--git/commits",
+        "bb--git/uncommitted-changes",
+        "forks",
+      ]);
+    });
+  });
+
+  it("ignores stored rows for the retired sidebar header preference", async () => {
+    await withTestHarness(async (harness) => {
+      const key = "sidebar.headerProvider";
+      overwriteStoredUiPreference(harness.deps.db, {
+        key,
+        valueJson: JSON.stringify("garden/icons"),
+      });
+      harness.deps.db.$client
+        .prepare(
+          "INSERT INTO ui_preference_defaults (key, value_json) VALUES (?, ?)",
+        )
+        .run(key, JSON.stringify("garden/icons"));
       const listed = await listPreferences(harness);
       expect(listed.status).toBe(200);
       const body = (await readJson(listed)) as {
@@ -84,17 +104,30 @@ describe("public ui preferences", () => {
       expect(Object.keys(body.preferences).sort()).toEqual(
         [...UI_PREFERENCE_KEYS].sort(),
       );
-      for (const key of retired) {
-        expect(body.preferences).not.toHaveProperty([key]);
-        expect(
-          (
-            await putPreference(harness, key, {
-              expectedRevision: 1,
-              value: "garden/icons",
-            })
-          ).status,
-        ).toBe(404);
-      }
+      expect(body.preferences).not.toHaveProperty([key]);
+      expect(
+        (
+          await putPreference(harness, key, {
+            expectedRevision: 1,
+            value: "garden/icons",
+          })
+        ).status,
+      ).toBe(404);
+    });
+  });
+
+  it("reads sidebar provider rows stored before the rail and resolves the removed built-in to Automatic", async () => {
+    await withTestHarness(async (harness) => {
+      overwriteStoredUiPreference(harness.deps.db, {
+        key: "sidebar.navigationProvider",
+        valueJson: JSON.stringify("navigation/navigation"),
+      });
+      const body = (await readJson(await listPreferences(harness))) as {
+        preferences: Record<string, { value: unknown }>;
+      };
+      expect(body.preferences["sidebar.navigationProvider"]?.value).toBe(
+        "__automatic__",
+      );
     });
   });
 
@@ -434,6 +467,7 @@ describe("public ui preferences", () => {
 
   it("resets to the default while advancing the revision", async () => {
     await withTestHarness(async (harness) => {
+      const notifySystem = vi.spyOn(harness.hub, "notifySystem");
       await putPreference(harness, "sidebar.sectionOrder", {
         expectedRevision: 0,
         value: ["threads", "pinned", "projects"],
@@ -445,6 +479,7 @@ describe("public ui preferences", () => {
         revision: 2,
         value: ["pinned", "projects", "threads"],
       });
+      expect(notifySystem).toHaveBeenCalledTimes(2);
 
       const stale = await putPreference(harness, "sidebar.sectionOrder", {
         expectedRevision: 1,

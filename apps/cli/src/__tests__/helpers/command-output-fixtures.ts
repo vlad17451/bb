@@ -78,6 +78,7 @@ export function makeTimelineResponse(
     sessionOptions: null,
     modelFallback: null,
     maxSeq: 0,
+    tag: "timeline-0",
     timelinePage: {
       returnedSegmentCount: rows.length > 0 ? 1 : 0,
       olderCursor: null,
@@ -120,6 +121,7 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     originKind: null,
     originPluginId: null,
     visibility: "visible",
+    parentNotifications: "auto",
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,

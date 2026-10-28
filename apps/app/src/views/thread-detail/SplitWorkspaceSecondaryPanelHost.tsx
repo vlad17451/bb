@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
+import { RESET } from "jotai/utils";
 import {
   Panel,
   PanelGroup,
@@ -34,18 +35,25 @@ import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
-import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import {
-  useWindowRightPanel,
-  useWindowTitleBarHostsRightPanelToggle,
-} from "@/components/layout/WindowRightPanelToggle";
+  RIGHT_PANEL_TOGGLE_ICON_NAME,
+  RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS,
+} from "@/components/secondary-panel/panelToggleControlState";
 import {
   getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "@/components/secondary-panel/panelTransitionTokens";
-import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import {
+  getBbDesktopInfo,
+  MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+  MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import { usePanelResizeSnap } from "@/components/secondary-panel/usePanelResizeSnap";
 import {
@@ -71,7 +79,9 @@ export function SplitWorkspaceSecondaryPanelHost({
   const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing(1);
   const model = usePaneSecondaryPanelModel(registry, focusedPaneId);
   const panelGroupRef = useRef<ImperativePanelGroupHandle | null>(null);
-  const panelWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
+  const widthPercentAtom =
+    model?.widthPercentAtom ?? secondaryPanelWidthPercentAtom;
+  const panelWidthPercent = useAtomValue(widthPercentAtom);
   const shortcut = useAppCommandShortcut("panel.toggle");
 
   const [isPanelVisible, setIsPanelVisible] = useState<boolean | null>(null);
@@ -150,11 +160,11 @@ export function SplitWorkspaceSecondaryPanelHost({
     toggleWindowPanel();
     return true;
   });
-  useWindowRightPanel({ isOpen, enabled: model === null });
-  const titleBarHostsRightPanelToggle =
-    useWindowTitleBarHostsRightPanelToggle();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const isSidebarFramed = useIsSidebarFramed();
 
-  const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
+  const setPanelWidthPercent = useSetAtom(widthPercentAtom);
   const lastEmptyPanelSizeRef = useRef(0);
   const handleEmptyPanelPointerResize = useCallback(
     (leadingFraction: number) => {
@@ -176,6 +186,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   const emptyPanelHitTargetRef = usePanelResizeSnap({
     onResize: handleEmptyPanelPointerResize,
     onDragging: handleEmptyPanelDragging,
+    onReset: () => setPanelWidthPercent(RESET),
   });
   const handleEmptyPanelCollapse = () => {
     if (lastEmptyPanelSizeRef.current <= 0) return;
@@ -184,10 +195,7 @@ export function SplitWorkspaceSecondaryPanelHost({
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
   const toggleIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
-  const showsCornerToggle =
-    !titleBarHostsRightPanelToggle &&
-    !isPaneMaximized &&
-    !(isOpen && model !== null);
+  const showsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
   const pinsCornerToggle = showsCornerToggle && !isOpen;
   const hostLayout = useMemo<SecondaryPanelHostLayout>(
     () => ({ isOpen, isSuppressed: isPaneMaximized, pinsCornerToggle }),
@@ -207,11 +215,17 @@ export function SplitWorkspaceSecondaryPanelHost({
             "absolute right-4 top-2.5 z-40",
             !showsCornerToggle && "hidden",
             MACOS_APP_REGION_NO_DRAG_CLASS,
+            usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
+            usesDesktopChrome && [
+              "flex h-7 items-center",
+              MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+            ],
+            isSidebarFramed && MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
           )}
         >
           <AppCommandShortcutHint
             shortcut={shortcut}
-            className="absolute right-0 top-full mt-1"
+            className={RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS}
           />
           <Button
             type="button"
@@ -253,8 +267,9 @@ export function SplitWorkspaceSecondaryPanelHost({
             }
             minSize={minimumSize.min * 100}
             order={1}
+            style={{ overflow: "clip" }}
             className={cn(
-              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+              "min-w-0 transition-[flex-grow,flex-basis]",
               PANEL_COLLAPSE_TRANSITION_CLASS,
             )}
           >
@@ -272,7 +287,8 @@ export function SplitWorkspaceSecondaryPanelHost({
                   hitAreaMargins={{ coarse: 0, fine: 0 }}
                   tabIndex={-1}
                   className={cn(
-                    "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[dragging=true]:bg-ring/40",
+                    "relative shrink-0 overflow-visible transition-[width,opacity,background-color] hover:bg-ring/40 data-[dragging=true]:bg-ring/40",
+                    isSidebarFramed ? "bg-border" : "bg-border-seam",
                     PANEL_RESIZE_HANDLE_LAYER_CLASS,
                     PANEL_COLLAPSE_TRANSITION_CLASS,
                     isOpen
@@ -298,8 +314,9 @@ export function SplitWorkspaceSecondaryPanelHost({
                   onCollapse={handleEmptyPanelCollapse}
                   onResize={handleEmptyPanelResize}
                   order={2}
+                  style={{ overflow: "clip" }}
                   className={cn(
-                    "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+                    "min-w-0 transition-[flex-grow,flex-basis]",
                     PANEL_COLLAPSE_TRANSITION_CLASS,
                   )}
                 >

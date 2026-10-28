@@ -74,6 +74,8 @@ export interface BbDesktopApi extends BbDesktopInfo {
   focusWindow?(): void;
   getWindowState?(): Promise<BbDesktopWindowState>;
   installUpdate(): Promise<void>;
+  macosTrafficLightInset?: number;
+  macosTrafficLightTopInset?: number;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
   onWindowStateChange?(
     listener: BbDesktopWindowStateChangeHandler,
@@ -88,6 +90,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
   openWindowFind?(request: BbDesktopWindowFindRequest): void;
   openDataDirectory?(): Promise<void>;
   openExternalUrl(url: string): void;
+  openApplicationUrl?(url: string): Promise<void>;
   openServerDaemonLogs?(): Promise<void>;
   reloadWindow?(): void;
   setSplitNavigationEnabled?(

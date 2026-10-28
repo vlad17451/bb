@@ -51,6 +51,7 @@ export {
   listProjectSourcesByProjectIds,
   listProjectSourcesByHost,
   getProjectSourceByHost,
+  getProjectSourceOnPersistentHost,
   projectSourceOwnsPath,
   updateProjectSource,
   deleteProjectSource,
@@ -85,8 +86,8 @@ export {
   listThreadEnvironmentAssignmentsOnHost,
   listUnarchivedAssignedChildThreads,
   listNonDeletedHiddenSourceThreads,
-  lifecycleThreadTreeIdsForProject,
-  listLifecycleThreadTree,
+  deletionThreadTreeIdsForProject,
+  listThreadDeletionTree,
   listLifecycleThreadDependents,
   listArchivedThreadsPendingTeardown,
   listRunningThreads,
@@ -125,6 +126,7 @@ export {
   forgetPluginProviders,
   getAiServiceSelections,
   getAppKeybindingOverrides,
+  claimInstallTurnNumber,
   getAppSettings,
   getDisabledPluginProviderCatalog,
   getDisabledProviderIds,
@@ -155,6 +157,7 @@ export {
   listUnnormalizedPluginRegistrations,
   markInstalledPluginRemoved,
   normalizeInstalledPluginRegistration,
+  restoreRemovedInstalledPlugin,
   setInstalledPluginDirectProvenance,
   setInstalledPluginEnabled,
   setInstalledPluginUpdateState,
@@ -201,6 +204,7 @@ export {
 } from "./plugin-marketplaces.js";
 export {
   deleteAllPluginSettings,
+  deleteAllPluginKvValues,
   deletePluginKvValue,
   getPluginKvValue,
   getPluginSettingsValues,
@@ -296,8 +300,11 @@ export {
   getHighWaterMarks,
   findStoredEventRow,
   getActiveStoredTurnId,
+  isStoredTurnMainRunIdle,
+  isStoredTurnProviderCompactionRunning,
   hasRootStoredTurnStarted,
   hasStoredSpawnAgentToolCall,
+  hasStoredTerminalClientTurnRequestEvent,
   hasStoredTurnStarted,
   classifyStoredProviderThreadClaim,
   wouldRemoveSharedProviderSessionClaim,
@@ -313,6 +320,7 @@ export {
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
+  getLatestTokenUsageRow,
   listEvents,
   listStoredConversationOutlineEventRows,
   listStoredRootConversationOutlineEventRows,
@@ -356,6 +364,7 @@ export {
   listOpenTurnInputAcceptedRowsByThreadIds,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
+  listThreadEventSuffixBackgroundSettlementRows,
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
@@ -393,6 +402,7 @@ export type {
 } from "./events.js";
 
 export {
+  countTerminalSessions,
   createTerminalSession,
   getTerminalSession,
   listTerminalSessions,
@@ -520,3 +530,12 @@ export {
 export * from "./project-attachments.js";
 
 export * from "./project-attachment-backfill.js";
+export {
+  clearDiffViewedFiles,
+  listDiffViewedFiles,
+  markDiffViewedFile,
+} from "./diff-viewed-files.js";
+export type {
+  DiffViewedFileRecord,
+  DiffViewedFileScope,
+} from "./diff-viewed-files.js";

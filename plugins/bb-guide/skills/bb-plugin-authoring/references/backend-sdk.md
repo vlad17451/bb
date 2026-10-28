@@ -26,7 +26,7 @@ signatures (see "Looking up the exact API" in distribution.md).
   `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`
   `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`
   `experimental_listPluginMetadata` `experimental_listAncestors`
-  `experimental_listDescendants`; sub-areas `events` (`list` `wait`),
+  `experimental_listDescendants` `experimental_listCascade`; sub-areas `events` (`list` `wait`),
   `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
   (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
@@ -39,10 +39,10 @@ signatures (see "Looking up the exact API" in distribution.md).
   `deleteMachineEnvironmentVariable`; sub-areas `attachments` (`upload` `read`
   `copy`), `sources` (`add` `update` `delete`)
 - `experimental_promptHistory`: `list`
-- `environments`: `list` `listProviders` `get` `update` `delete` `status`
-  `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles`
-  `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft`
-  `markPullRequestReady` `mergePullRequest` `experimental_cleanup`
+- `environments`: `list` `listProviders` `get` `update` `delete` `paths`
+  `commit` `archiveThreads` `experimental_cleanup`
+  `experimental_diffViewed` `experimental_markDiffViewed`
+  `experimental_clearDiffViewed`
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
   `pickFolder` `cloneDefaultPath` `providerCliStatus` `installProviderCli`
   `retryUpdate` `experimental_listProviders` `experimental_create`
@@ -120,6 +120,13 @@ handOver(input, { experimental_caller: caller }) {
 },
 ```
 
+The context's `experimental_signal` aborts when the caller stops waiting
+(its HTTP request disconnects) or when this plugin generation is reloaded,
+disabled or removed. Pass it to long work and stop when it aborts.
+`bb.sdk.plugins.callRpc` gives up after 75 seconds, which disconnects the
+request and aborts the handler's signal; build longer operations as a job the
+caller polls.
+
 ### Thread plugin metadata
 
 Each plugin can keep a JSON-object namespace on a thread. Seed your namespace
@@ -164,7 +171,11 @@ omits threads without it.
 ancestor ids from its parent up to the root, and
 `bb.sdk.threads.experimental_listDescendants({ threadIds })` every thread below
 it, children first (1–200 ids per call), leaving out archived and hidden ones
-unless you pass `includeArchived` or `includeHidden`. Pair them with
+unless you pass `includeArchived` or `includeHidden`.
+`bb.sdk.threads.experimental_listCascade({ threadIds, action })` returns, for
+`action` `"archive"` or `"delete"`, the visible threads that archiving or
+deleting each thread would also affect, following the same parent and
+lifecycle-owner links the action does. Pair them with
 `experimental_listPluginMetadata` to read a setting that a parent applies to its
 subtree. `bb.events.on("experimental_thread.parentChanged", handler)` fires after
 a thread moves to a new parent or loses its parent (a `threads.update` of
@@ -227,9 +238,12 @@ const timeline = await bb.sdk.threads.timeline({ threadId });
 await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
 ```
 
-`threads.list` filters on `projectId`, `environmentId`, `parentThreadId`, `sourceThreadId`,
-`sectionId`, `originKind`, `originPluginId`, `archived`, `unsectioned`,
-`hasParent`, and `includeHidden`, and it pages with `limit` and `offset`.
+`threads.list` filters on `projectId`, `environmentId`, `hostId`,
+`parentThreadId`, `sourceThreadId`, `sectionId`, `originKind`,
+`originPluginId`, `archived`, `unsectioned`, `hasParent`, and `includeHidden`,
+and it pages with `limit` and `offset`. `threadIds` (at most 200) narrows it to
+those threads and leaves out unknown or deleted IDs, so it also answers which
+of a set of threads still exist.
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
 `reasoningLevel`, and `visibility`. Use `threads.timeline` (or
 `threads.output` for the last assistant text) to read a thread's messages.
@@ -292,6 +306,12 @@ it the right save path even locally):
 const file = await bb.sdk.files.read({ path: "/home/me/notes/todo.md" });
 // → { content, contentEncoding, sha256, sizeBytes, modifiedAtMs?, ... }
 
+const atHead = await bb.sdk.files.read({
+  path: "/home/me/repo/src/app.ts",
+  rootPath: "/home/me/repo",
+  ref: "HEAD", // read the file at a git revision; requires rootPath
+});
+
 const saved = await bb.sdk.files.write({
   path: "/home/me/notes/todo.md",
   rootPath: "/home/me/notes", // optional: confine writes beneath this root
@@ -349,3 +369,9 @@ path-shaped `baseUrl`. Append individually encoded relative path segments to
 serve browser assets from that confined host root. This is the preferred
 transport for plugin images and sandboxed HTML with sibling-relative assets;
 preview URLs expire and never reveal the host id or absolute root.
+
+Caller-gated RPC handlers can throw `new experimental_PluginRpcRefusal({
+code: "forbidden", message: "Only the connect plugin can call this method" })`
+from `@get-bb/plugin-sdk`. `bb.sdk.plugins.callRpc` rejects with a `BbHttpError`
+whose `code` is `forbidden` and `status` is 403. See `backend-events.md` for
+the refusal codes, optional validation issues and mutation rollback behavior.

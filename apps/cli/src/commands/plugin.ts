@@ -6,7 +6,11 @@ import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command, Option } from "commander";
 import { z } from "zod";
-import { derivePluginId, jsonValueSchema } from "@bb/domain";
+import {
+  derivePluginId,
+  jsonValueSchema,
+  PLUGIN_SDK_VERSION,
+} from "@bb/domain";
 import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import {
   pluginInstallBadge,
@@ -20,7 +24,6 @@ import type {
   PluginCatalogSearchResult,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { BbHttpError, pluginMutationResponseSchema } from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
 import {
@@ -30,7 +33,7 @@ import {
   setPluginSdkPin,
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
-import { action } from "../action.js";
+import { action, CliExitError } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
   buildPluginApp,
@@ -343,12 +346,8 @@ async function execNpm(
   args: readonly string[],
   options: { cwd?: string; timeout?: number; killSignal?: NodeJS.Signals },
 ): Promise<{ stdout: string; stderr: string }> {
-  const { exec, execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  if (process.platform === "win32") {
-    return promisify(exec)(["npm", ...args].join(" "), options);
-  }
-  return promisify(execFile)("npm", [...args], options);
+  const { execHostFile } = await import("@bb/process-utils");
+  return execHostFile("npm", args, options);
 }
 
 async function probeSdkVersionPublished(): Promise<
@@ -845,12 +844,22 @@ export function registerPluginCommands(
               : jsonValueSchema.parse(
                   JSON.parse(await readFile(opts.inputFile, "utf8")),
                 );
-          const result = await createCliBbSdk(getUrl()).plugins.callRpc({
-            pluginId,
-            method,
-            input,
-            outputSchema: jsonValueSchema,
-          });
+          const result = await createCliBbSdk(getUrl())
+            .plugins.callRpc({
+              pluginId,
+              method,
+              input,
+              outputSchema: jsonValueSchema,
+            })
+            .catch((error: unknown) => {
+              if (error instanceof BbHttpError && error.code !== null) {
+                throw new CliExitError(`${error.code}: ${error.message}`, 1, {
+                  code: error.code,
+                  hint: null,
+                });
+              }
+              throw error;
+            });
           if (opts.json) {
             outputJson(opts, result);
             return;
@@ -1637,9 +1646,13 @@ export function registerPluginCommands(
         await checkPluginSdkLayout(rootDir);
         const toolchain = await cliBuildToolchain();
         const server = await buildPluginServer(rootDir, bbVersion, toolchain);
+        for (const warning of server.migrationWarnings)
+          console.warn(`warning: ${warning}`);
         const files = [server.jsPath, server.mapPath, server.metaPath];
         if (hasApp) {
           const app = await buildPluginApp(rootDir, bbVersion, toolchain);
+          for (const warning of app.migrationWarnings)
+            console.warn(`warning: ${warning}`);
           files.push(app.jsPath, app.cssPath, app.metaPath);
         }
         if (hasHost) {
@@ -1689,12 +1702,14 @@ export function registerPluginCommands(
             };
           },
           buildApp: async () => {
-            await buildPluginApp(
+            const app = await buildPluginApp(
               rootDir,
               resolveBbCliVersion(),
               await cliBuildToolchain(),
               { minify: false },
             );
+            for (const warning of app.migrationWarnings)
+              console.warn(`warning: ${warning}`);
           },
           buildHost: async () => {
             await buildPluginHost(
@@ -1777,16 +1792,30 @@ export function registerPluginCommands(
       .option("--json", "Output JSON")
       .action(
         action(async (id: string, opts: JsonOutputOptions) => {
-          const result = pluginMutationResponseSchema.parse(
+          const response = pluginMutationResponseSchema.parse(
             await callPlugins(
               getUrl(),
               `/${encodeURIComponent(id)}/${name}`,
               "POST",
             ),
           );
+          const failedPlugin =
+            name === "enable" &&
+            response.plugin?.enabled === true &&
+            response.plugin.status === "error"
+              ? response.plugin
+              : null;
+          const result = failedPlugin
+            ? {
+                ...response,
+                ok: false,
+                error:
+                  failedPlugin.statusDetail ?? `plugin "${id}" failed to load`,
+              }
+            : response;
           if (outputMutationJson(opts, result)) return;
+          if (result.plugin) printPlugin(result.plugin);
           if (!result.ok || !result.plugin) exitWithError(result);
-          printPlugin(result.plugin);
         }),
       );
   }

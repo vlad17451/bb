@@ -32,7 +32,10 @@ import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
   usePanelCollapseTransitionsReady,
 } from "./panelTransitionTokens";
-import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
+import {
+  SecondaryPanelWidthPercentAtomContext,
+  type SecondaryPanelWidthPercentAtom,
+} from "./threadSecondaryPanelAtoms";
 import {
   isCompactSidebarDrawerShowing,
   subscribeCompactSidebarDrawerShowing,
@@ -59,6 +62,7 @@ interface SecondaryPanelLayoutProps {
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
+  onSwipeOpen?: () => void;
   panelGroupKey?: Key;
   resetKey: Key;
   contentKey: string;
@@ -74,12 +78,14 @@ interface SecondaryPanelLayoutProps {
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   renderHostedPanel?: (panel: ReactNode) => ReactNode;
   composerHost: PluginComposerHost | null;
+  widthPercentAtom: SecondaryPanelWidthPercentAtom;
 }
 
 export function SecondaryPanelLayout({
   open,
   onToggle,
   onClose,
+  onSwipeOpen,
   panelGroupKey,
   resetKey,
   contentKey,
@@ -92,17 +98,20 @@ export function SecondaryPanelLayout({
   renderPanel: renderWorkspacePanel,
   renderHostedPanel,
   composerHost,
+  widthPercentAtom,
 }: SecondaryPanelLayoutProps) {
   const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing();
   const paneContext = useOptionalPaneContext();
   const pluginDetails = useContext(PluginDetailPanelContext);
   const renderPanel = useCallback(
     (args: SecondaryPanelRenderArgs) => (
-      <PluginDetailPanelContext.Provider value={pluginDetails}>
-        {renderWorkspacePanel(args)}
-      </PluginDetailPanelContext.Provider>
+      <SecondaryPanelWidthPercentAtomContext.Provider value={widthPercentAtom}>
+        <PluginDetailPanelContext.Provider value={pluginDetails}>
+          {renderWorkspacePanel(args)}
+        </PluginDetailPanelContext.Provider>
+      </SecondaryPanelWidthPercentAtomContext.Provider>
     ),
-    [pluginDetails, renderWorkspacePanel],
+    [pluginDetails, renderWorkspacePanel, widthPercentAtom],
   );
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
@@ -123,19 +132,12 @@ export function SecondaryPanelLayout({
     resetKey,
     !renderAsDrawer,
   );
-  const persistedSecondaryWidthPercent = useAtomValue(
-    secondaryPanelWidthPercentAtom,
-  );
+  const persistedSecondaryWidthPercent = useAtomValue(widthPercentAtom);
   const isMainCollapsed = open && !renderAsDrawer && collapse?.active === true;
 
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
   );
-  const persistedSecondaryWidthRef = useRef(persistedSecondaryWidthPercent);
-  useEffect(() => {
-    persistedSecondaryWidthRef.current = persistedSecondaryWidthPercent;
-  }, [persistedSecondaryWidthPercent]);
-
   useLayoutEffect(() => {
     const group = horizontalPanelGroupRef.current;
     if (group === null || renderAsDrawer) {
@@ -154,9 +156,11 @@ export function SecondaryPanelLayout({
       return;
     }
 
-    const secondaryWidth = persistedSecondaryWidthRef.current;
-    group.setLayout([FULL_PANEL_SIZE_PERCENT - secondaryWidth, secondaryWidth]);
-  }, [isMainCollapsed, open, renderAsDrawer]);
+    group.setLayout([
+      FULL_PANEL_SIZE_PERCENT - persistedSecondaryWidthPercent,
+      persistedSecondaryWidthPercent,
+    ]);
+  }, [isMainCollapsed, open, persistedSecondaryWidthPercent, renderAsDrawer]);
 
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
@@ -298,6 +302,7 @@ export function SecondaryPanelLayout({
       panel: renderHostedPanel?.(inlinePanel) ?? inlinePanel,
       onToggle,
       transitionsReady,
+      widthPercentAtom,
     }),
     [
       composerHost,
@@ -308,6 +313,7 @@ export function SecondaryPanelLayout({
       open,
       renderHostedPanel,
       transitionsReady,
+      widthPercentAtom,
     ],
   );
   usePaneSecondaryPanelRegistration(secondaryPanelHost, hostedPanelModel);
@@ -367,8 +373,9 @@ export function SecondaryPanelLayout({
             }
             minSize={minimumSize.min * 100}
             order={1}
+            style={{ overflow: "clip" }}
             className={cn(
-              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+              "min-w-0 transition-[flex-grow,flex-basis]",
               PANEL_COLLAPSE_TRANSITION_CLASS,
             )}
           >
@@ -383,6 +390,7 @@ export function SecondaryPanelLayout({
         <CompactSecondaryPanelShelf
           open={open}
           onClose={onClose}
+          onOpen={onSwipeOpen}
           srLabel={drawerLabel}
           onContentAnimationEnd={handleDrawerContentAnimationEnd}
         >

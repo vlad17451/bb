@@ -29,13 +29,19 @@ import {
   type PluginSdkTestFakes,
   type RenderedSlot,
   type TestThreadActionsResolver,
+  type TestThreadBulkActionsResolver,
 } from "@get-bb/plugin-sdk/testing/app";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import {
   makeSidebarEnvironment,
   makeSidebarThread,
+  makePluginProject,
 } from "../model/fixtures.js";
-import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
+import {
+  sidebarShowProviderIconsAtom,
+  sidebarShowRowMetadataAtom,
+} from "../preferences/atoms.js";
+import { SidebarProjectsContext } from "../model/use-sidebar-data.js";
 import type { ThreadRowOptions } from "./ThreadRow.js";
 import {
   preferenceValueAtom,
@@ -51,8 +57,13 @@ const { SidebarDraftPresenceSync } =
   await import("../list/sidebarDraftPresence.js");
 const { ThreadRowNavigationProvider } =
   await import("./threadRowNavigation.js");
-const { resetSidebarTitleDoubleClickForTest, ThreadRow } =
-  await import("./ThreadRow.js");
+const { ThreadSelectionProvider } =
+  await import("../selection/threadSelection.js");
+const {
+  resetSidebarTitleDoubleClickForTest,
+  SidebarProvidersContext,
+  ThreadRow,
+} = await import("./ThreadRow.js");
 
 const DEFAULT_OPTIONS: ThreadRowOptions = {
   kind: "default",
@@ -81,6 +92,8 @@ function activity(
 
 interface HarnessProps {
   thread: PluginSidebarThread;
+  projects?: PluginSidebarProject[];
+  providers?: PluginProvidersState["providers"];
   isCompactViewport?: boolean;
   crossProjectId?: string | null;
   isActive?: boolean;
@@ -88,10 +101,14 @@ interface HarnessProps {
   onRowEvent?: () => void;
   onCustomizeRowActions?: (threadId: string) => void;
   onFinishCustomizingRowActions?: (restoreFocus: boolean) => void;
+  siblings?: PluginSidebarThread[];
 }
 
 function ThreadRowHarness({
   thread,
+  siblings = [],
+  projects = [],
+  providers = [],
   isCompactViewport,
   crossProjectId = null,
   isActive = false,
@@ -109,35 +126,50 @@ function ThreadRowHarness({
     />
   );
   const content = (
-    <TooltipProvider>
-      <SidebarDraftPresenceSync />
-      <ThreadRowNavigationProvider>
-        <SidebarRenameProvider>
-          <CustomizeRowActionsContext.Provider
-            value={onCustomizeRowActions ?? null}
-          >
-            <ThreadRowActionsCustomizingContext.Provider
-              value={
-                onFinishCustomizingRowActions
-                  ? {
-                      threadId: thread.id,
-                      onDone: onFinishCustomizingRowActions,
+    <SidebarProjectsContext.Provider value={projects}>
+      <SidebarProvidersContext.Provider value={providers}>
+        <TooltipProvider>
+          <SidebarDraftPresenceSync />
+          <ThreadRowNavigationProvider>
+            <ThreadSelectionProvider activeThreadId={null}>
+              <SidebarRenameProvider>
+                <CustomizeRowActionsContext.Provider
+                  value={onCustomizeRowActions ?? null}
+                >
+                  <ThreadRowActionsCustomizingContext.Provider
+                    value={
+                      onFinishCustomizingRowActions
+                        ? {
+                            threadId: thread.id,
+                            onDone: onFinishCustomizingRowActions,
+                          }
+                        : null
                     }
-                  : null
-              }
-            >
-              <div
-                onPointerDown={onRowEvent}
-                onKeyDown={onRowEvent}
-                onClick={onRowEvent}
-              >
-                {row}
-              </div>
-            </ThreadRowActionsCustomizingContext.Provider>
-          </CustomizeRowActionsContext.Provider>
-        </SidebarRenameProvider>
-      </ThreadRowNavigationProvider>
-    </TooltipProvider>
+                  >
+                    <div
+                      onPointerDown={onRowEvent}
+                      onKeyDown={onRowEvent}
+                      onClick={onRowEvent}
+                    >
+                      {row}
+                      {siblings.map((sibling) => (
+                        <ThreadRow
+                          key={sibling.id}
+                          thread={sibling}
+                          crossProjectId={crossProjectId}
+                          isActive={false}
+                          options={options}
+                        />
+                      ))}
+                    </div>
+                  </ThreadRowActionsCustomizingContext.Provider>
+                </CustomizeRowActionsContext.Provider>
+              </SidebarRenameProvider>
+            </ThreadSelectionProvider>
+          </ThreadRowNavigationProvider>
+        </TooltipProvider>
+      </SidebarProvidersContext.Provider>
+    </SidebarProjectsContext.Provider>
   );
   return isCompactViewport === undefined ? (
     content
@@ -159,6 +191,8 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   providers?: PluginProvidersState["providers"];
   sdk?: PluginSdkTestFakes;
   threadActions?: TestThreadActionsResolver;
+  threadBulkActions?: TestThreadBulkActionsResolver;
+  experiments?: string[];
 }
 
 function renderThreadRow({
@@ -172,15 +206,20 @@ function renderThreadRow({
   providers = [],
   sdk,
   threadActions = hostThreadActions(),
+  threadBulkActions,
+  experiments,
   ...harness
 }: RenderThreadRowArgs = {}): RenderedSlot & {
   rerenderThreadRow(nextThread: PluginSidebarThread): void;
 } {
   const slot = renderSlot(
     { component: ThreadRowHarness },
-    { thread, ...harness },
+    { thread, projects, providers, ...harness },
     {
-      sidebarThreads: { threads: [thread], projects },
+      sidebarThreads: {
+        threads: [thread, ...(harness.siblings ?? [])],
+        projects,
+      },
       providers: { providers },
       sidebarDraftThreadIds: [
         ...(hasComposerDraft ? [thread.id] : []),
@@ -198,12 +237,19 @@ function renderThreadRow({
       sidebarSplitLayout: splitLayout,
       sdk,
       threadActions,
+      threadBulkActions,
+      experiments,
     },
   );
   return Object.assign(slot, {
     rerenderThreadRow(nextThread: PluginSidebarThread) {
       slot.lifecycle.rerender(
-        <ThreadRowHarness thread={nextThread} {...harness} />,
+        <ThreadRowHarness
+          thread={nextThread}
+          projects={projects}
+          providers={providers}
+          {...harness}
+        />,
       );
     },
   });
@@ -412,6 +458,103 @@ describe("ThreadRow", () => {
       { method: "toThread", threadId: "thr_test", options: { split: true } },
     ]);
   });
+
+  it.each([
+    ["meta", { metaKey: true }],
+    ["ctrl", { ctrlKey: true }],
+  ])(
+    "selects the row on %s-shift-click and still splits without shift with multi-select on",
+    (_label, modifier) => {
+      const slot = renderThreadRow({ experiments: ["sidebarMultiSelect"] });
+      const link = screen.getByRole("link", { name: "Open Thread" });
+      const row = link.closest("[data-sidebar-rename-row]");
+      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+      expect(fireEvent.click(link, { ...modifier, shiftKey: true })).toBe(
+        false,
+      );
+      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+      expect(slot.inspection.navigateCalls).toEqual([]);
+      expect(fireEvent.click(link, modifier)).toBe(false);
+      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+      expect(slot.inspection.navigateCalls).toEqual([
+        { method: "toThread", threadId: "thr_test", options: { split: true } },
+      ]);
+    },
+  );
+
+  it("opens the bulk menu for a selected row and its own menu for an unselected one", async () => {
+    const first = createThread({ id: "thr_first", title: "First" });
+    const second = createThread({ id: "thr_second", title: "Second" });
+    const third = createThread({ id: "thr_third", title: "Third" });
+    const bulkTargets: string[][] = [];
+    renderThreadRow({
+      thread: first,
+      siblings: [second, third],
+      projects: [makePluginProject()],
+      experiments: ["sidebarMultiSelect"],
+      threadBulkActions: (threads) => {
+        bulkTargets.push(threads.map((target) => target.id));
+        return [];
+      },
+    });
+    for (const title of ["First", "Second"]) {
+      fireEvent.click(screen.getByRole("link", { name: `Open ${title}` }), {
+        metaKey: true,
+        shiftKey: true,
+      });
+    }
+    fireEvent.contextMenu(screen.getByRole("link", { name: "Open Second" }));
+    await screen.findByRole("menu", { name: "Actions for 2 threads" });
+    expect(bulkTargets.at(-1)).toEqual(["thr_first", "thr_second"]);
+    expect(
+      screen.getByRole("menuitem", { name: "Clear selection" }),
+    ).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.click(screen.getByRole("link", { name: "Open First" }), {
+      metaKey: true,
+      shiftKey: true,
+    });
+    fireEvent.click(screen.getByRole("link", { name: "Open Second" }), {
+      metaKey: true,
+      shiftKey: true,
+    });
+    fireEvent.contextMenu(screen.getByRole("link", { name: "Open Third" }));
+    expect(
+      await screen.findByRole("menu", { name: "Thread actions" }),
+    ).toBeTruthy();
+  });
+
+  it.each(["sidebar", "outside"])(
+    "clears selection on empty %s space but keeps it for rows and menus",
+    (target) => {
+      const { container } = renderThreadRow({
+        experiments: ["sidebarMultiSelect"],
+      });
+      container.setAttribute("data-sidebar", "sidebar");
+      const link = screen.getByRole("link", { name: "Open Thread" });
+      const row = link.closest("[data-sidebar-rename-row]")!;
+      const menu = document.createElement("div");
+      menu.setAttribute("role", "menu");
+      document.body.append(menu);
+      try {
+        fireEvent.click(link, { metaKey: true, shiftKey: true });
+        for (const keepingTarget of [
+          row,
+          link,
+          screen.getByRole("button", { name: "Thread actions" }),
+          menu,
+        ]) {
+          fireEvent.pointerDown(keepingTarget);
+          expect(row.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+        }
+        fireEvent.pointerDown(target === "sidebar" ? container : document.body);
+        expect(row.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+      } finally {
+        menu.remove();
+      }
+    },
+  );
 
   it("keeps desktop restore available, hides it on mobile, and blocks row event propagation", async () => {
     const thread = createThread({ archivedAt: 1, isArchived: true });
@@ -947,9 +1090,7 @@ describe("ThreadRow", () => {
     expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
     expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
     expect(
-      marker?.parentElement?.previousElementSibling?.querySelector(
-        ".bb-thread-title",
-      ),
+      marker?.parentElement?.querySelector(".bb-thread-title"),
     ).not.toBeNull();
     expect(
       marker?.closest("[data-sidebar-thread-trailing-indicator]"),
@@ -1066,7 +1207,7 @@ describe("ThreadRow", () => {
   });
 
   it.each([true, false])(
-    "gives a parent title the action space while actions are hidden (collapsed: %s)",
+    "reserves quick-action space after parent disclosure (collapsed: %s)",
     (isCollapsed) => {
       const onToggleCollapsed = vi.fn();
       renderThreadRow({
@@ -1088,22 +1229,24 @@ describe("ThreadRow", () => {
       const toggle = screen.getByRole("button", {
         name: /(?:Expand|Collapse) Nested discussion/,
       });
-      const titleContainer = toggle.parentElement;
       const link = screen.getByRole("link", {
         name: "Open Nested discussion with enough text to fill the sidebar width",
       });
-      const navigationTarget = link.parentElement;
-      const titleWrapper = link.nextElementSibling;
       expect(
-        titleContainer?.classList.contains("bb-sidebar-hover-actions-inset"),
-      ).toBe(false);
-      expect(
-        titleContainer?.classList.contains(
+        link.parentElement?.classList.contains(
           "pr-(--bb-sidebar-hover-actions-inset)",
         ),
-      ).toBe(false);
-      expect(navigationTarget?.classList.contains("flex-1")).toBe(true);
-      expect(titleWrapper?.classList.contains("flex-1")).toBe(false);
+      ).toBe(true);
+      const row = link.closest("[data-sidebar-rename-row]");
+      expect(
+        Array.from(row?.querySelectorAll("button") ?? [], (button) =>
+          button.getAttribute("aria-label"),
+        ),
+      ).toEqual([
+        toggle.getAttribute("aria-label"),
+        "Archive",
+        "Thread actions",
+      ]);
       fireEvent.click(toggle);
       expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
     },
@@ -1124,6 +1267,43 @@ describe("ThreadRow", () => {
 
     fireEvent.click(link);
     expect(clickLink).toHaveBeenCalledTimes(2);
+  });
+
+  it("draws other plugins' metadata only while Metadata is on", () => {
+    const slot = renderThreadRow({ experiments: ["threadRowMetadata"] });
+    expect(slot.container.querySelector("[data-thread-row-metadata]")).toBeNull();
+
+    act(() => getDefaultStore().set(sidebarShowRowMetadataAtom, true));
+    expect(
+      slot.container.querySelector("[data-thread-row-metadata]"),
+    ).not.toBeNull();
+  });
+
+  it("ignores the Metadata preference while its experiment is off", () => {
+    getDefaultStore().set(sidebarShowRowMetadataAtom, true);
+    const slot = renderThreadRow();
+    expect(slot.container.querySelector("[data-thread-row-metadata]")).toBeNull();
+  });
+
+  it("routes a click on other plugins' metadata like the rest of the row", () => {
+    getDefaultStore().set(sidebarShowRowMetadataAtom, true);
+    const slot = renderThreadRow({
+      experiments: ["sidebarMultiSelect", "threadRowMetadata"],
+    });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const row = link.closest("[data-sidebar-rename-row]");
+    const items = row?.querySelector("[data-thread-row-metadata]");
+    expect(items).not.toBeNull();
+    const clickLink = vi.spyOn(link, "click");
+
+    fireEvent.click(items!, { metaKey: true, shiftKey: true });
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+    expect(clickLink).not.toHaveBeenCalled();
+    expect(slot.inspection.navigateCalls).toEqual([]);
+
+    fireEvent.click(items!);
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+    expect(clickLink).toHaveBeenCalledOnce();
   });
 
   it("does not route a suppressed drag click on the trailing area", () => {
@@ -1445,16 +1625,15 @@ describe("ThreadRow", () => {
     expect(screen.getByText("Thread")).not.toBeNull();
   });
 
-  it("navigates instead of renaming when the title is double-tapped on a compact viewport", async () => {
+  it("renames inline after a fine-pointer double click on a compact viewport", async () => {
     renderThreadRow({ isCompactViewport: true });
     const link = screen.getByRole("link", { name: "Open Thread" });
-
     expect(fireEvent.click(link)).toBe(true);
-    expect(fireEvent.click(link)).toBe(true);
-    fireEvent.doubleClick(screen.getByText("Thread"));
-    await act(async () => new Promise(requestAnimationFrame));
-
-    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(fireEvent.click(link)).toBe(false);
+    expect(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    ).toHaveProperty("value", "Thread");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("does not start a sortable drag while editing the title", async () => {
@@ -1595,15 +1774,20 @@ describe("ThreadRow", () => {
       .mockReturnValue(false);
     const slot = renderThreadRow({
       options: { ...DEFAULT_OPTIONS, consumeClickSuppression },
+      experiments: ["sidebarMultiSelect"],
     });
     const link = screen.getByRole("link", { name: "Open Thread" });
 
+    const row = link.closest("[data-sidebar-rename-row]");
+
     expect(fireEvent.click(link)).toBe(false);
-    expect(fireEvent.click(link, { metaKey: true })).toBe(false);
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+    expect(fireEvent.click(link, { metaKey: true, shiftKey: true })).toBe(
+      false,
+    );
     expect(consumeClickSuppression).toHaveBeenCalledTimes(2);
-    expect(slot.inspection.navigateCalls).toEqual([
-      { method: "toThread", threadId: "thr_test", options: { split: true } },
-    ]);
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+    expect(slot.inspection.navigateCalls).toEqual([]);
   });
 
   it("starts a rename from a second click after the row remounts", async () => {

@@ -1,3 +1,4 @@
+import { requestToaster } from "@/components/ui/app-toast-runtime";
 import {
   markPluginFrontendBootStarted,
   markPluginFrontendsSettled,
@@ -22,11 +23,16 @@ const loadPluginFrontend = createRetryingModuleLoader<PluginFrontendModule>(
   () => import("./plugin-frontend"),
 );
 
+export function preloadPluginFrontend(): void {
+  void loadPluginFrontend().catch(() => {});
+}
+
 let bootRequested = false;
 
 export async function bootPluginFrontends(): Promise<void> {
   bootRequested = true;
   markPluginFrontendBootStarted();
+  requestToaster();
   try {
     const pluginFrontend = await loadPluginFrontend();
     await pluginFrontend.bootPluginFrontends();

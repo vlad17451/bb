@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { QueryClient } from "@tanstack/react-query";
 import { createElement } from "react";
@@ -22,7 +23,11 @@ import {
   type PluginFrontendCandidate,
   type PluginFrontendReconcileDeps,
 } from "./plugin-frontend";
-import { resetPluginCssForTest, retainPluginCss } from "./plugin-css";
+import {
+  prefetchPluginCss,
+  resetPluginCssForTest,
+  retainPluginCss,
+} from "./plugin-css";
 import {
   getPluginSlotSnapshot,
   removePluginSlotRegistrations,
@@ -55,6 +60,7 @@ function candidate(
       sdkMajor: 0,
       sdkVersion: "0.1.0",
       compatible: true,
+      runtimeSlots: [],
       ...overrides,
     },
   };
@@ -116,17 +122,20 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
+    importModule: vi.fn(
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
+    importRetryDelaysMs: [] as readonly number[],
     applyCss: vi.fn(),
+    prefetchCss: vi.fn(),
+    prefetchModule: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
     beginSlotBatch: () => () => {},
     warn: vi.fn(),
-    routePluginId: () => null,
+    priorityPluginIds: () => [],
     mountTimeoutMs: undefined as number | undefined,
   };
 }
@@ -244,14 +253,17 @@ describe("reconcilePluginFrontends", () => {
     const deps: PluginFrontendReconcileDeps = {
       fetchCandidates,
       importModule: async () => pluginModule("hello"),
+      importRetryDelaysMs: [],
       applyCss: vi.fn(),
+      prefetchCss: vi.fn(),
+      prefetchModule: vi.fn(),
       retainCss: vi.fn(() => vi.fn()),
       resetCrashedSlots: vi.fn(),
       setRegistrations: setPluginSlotRegistrations,
       removeRegistrations: removePluginSlotRegistrations,
       beginSlotBatch: () => () => {},
       warn: vi.fn(),
-      routePluginId: () => null,
+      priorityPluginIds: () => [],
     };
 
     await reconcilePluginFrontends(state, deps);
@@ -324,7 +336,7 @@ describe("reconcilePluginFrontends", () => {
     });
 
     expect(preparedDuringRender).toHaveBeenCalledWith(
-      "/api/v1/plugins/hello/assets/app.css?h=cold",
+      `/api/v1/plugins/hello/assets/app.css?h=cold&host-tailwind=${HOST_TAILWIND_VERSION}`,
     );
     expect(container.textContent).toContain("cold panel body:notes/today.md");
     expect(
@@ -410,14 +422,14 @@ describe("reconcilePluginFrontends", () => {
     });
     expect(container.textContent).toContain("generation v2");
     expect(links().map((link) => link.getAttribute("href"))).toEqual([
-      "/api/v1/plugins/hello/assets/app.css?h=v1",
-      "/api/v1/plugins/hello/assets/app.css?h=v2",
+      `/api/v1/plugins/hello/assets/app.css?h=v1&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/api/v1/plugins/hello/assets/app.css?h=v2&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     links()[1]?.dispatchEvent(new Event("error"));
     expect(links().map((link) => link.getAttribute("href"))).toEqual([
-      "/api/v1/plugins/hello/assets/app.css?h=v1",
+      `/api/v1/plugins/hello/assets/app.css?h=v1&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
     expect(container.textContent).toContain("generation v2");
     warn.mockRestore();
@@ -427,12 +439,12 @@ describe("reconcilePluginFrontends", () => {
       await reconcilePluginFrontends(state, deps);
     });
     expect(links().map((link) => link.getAttribute("href"))).toEqual([
-      "/api/v1/plugins/hello/assets/app.css?h=v1",
-      "/api/v1/plugins/hello/assets/app.css?h=v3",
+      `/api/v1/plugins/hello/assets/app.css?h=v1&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/api/v1/plugins/hello/assets/app.css?h=v3&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
     links()[1]?.dispatchEvent(new Event("load"));
     expect(links().map((link) => link.getAttribute("href"))).toEqual([
-      "/api/v1/plugins/hello/assets/app.css?h=v3",
+      `/api/v1/plugins/hello/assets/app.css?h=v3&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
 
     act(() => root.unmount());
@@ -565,6 +577,32 @@ describe("reconcilePluginFrontends", () => {
       "/api/v1/plugins/hello/assets/app.js?h=v1&bb_retry=1",
     );
     expect(state.records.get("hello")?.status).toBe("loaded");
+  });
+
+  it("retries a failed import with a fresh module URL within the same reconcile", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    deps.importRetryDelaysMs = [0, 0];
+    deps.importModule
+      .mockRejectedValueOnce(
+        new TypeError("Failed to fetch dynamically imported module"),
+      )
+      .mockRejectedValueOnce(
+        new TypeError("Failed to fetch dynamically imported module"),
+      );
+
+    await reconcilePluginFrontends(state, deps);
+
+    expect(deps.importModule.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/plugins/hello/assets/app.js?h=v1",
+      "/api/v1/plugins/hello/assets/app.js?h=v1&bb_retry=1",
+      "/api/v1/plugins/hello/assets/app.js?h=v1&bb_retry=2",
+    ]);
+    expect(state.records.get("hello")?.status).toBe("loaded");
+    expect(deps.setRegistrations).toHaveBeenCalledWith(
+      "hello",
+      expect.anything(),
+    );
   });
 
   it("mounts once, skips repeated reconciliation, and disposes exactly once on reload and removal", async () => {
@@ -842,6 +880,40 @@ describe("reconcilePluginFrontends", () => {
         message: "candidate exploded",
       },
     });
+  });
+
+  it("activates a plugin that still passes experimental_sidebarAccessory and warns about it", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    function Panel() {
+      return null;
+    }
+    deps.importModule.mockResolvedValueOnce({
+      default: definePluginApp((app) => {
+        app.slots.navPanel({
+          id: "board",
+          title: "Board",
+          icon: "Columns",
+          path: "board",
+          component: Panel,
+          experimental_sidebarAccessory: Panel,
+        } as never);
+      }),
+    });
+
+    await reconcilePluginFrontends(state, deps);
+
+    expect(state.appliedHashes.has("hello")).toBe(true);
+    expect(state.diagnostics.get("hello")?.lastFailure).toBeNull();
+    expect(deps.setRegistrations).toHaveBeenCalledWith(
+      "hello",
+      expect.objectContaining({
+        navPanels: [expect.objectContaining({ id: "board" })],
+      }),
+    );
+    expect(deps.warn).toHaveBeenCalledWith(
+      '[plugin:hello] slots.navPanel: "experimental_sidebarAccessory" is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.53',
+    );
   });
 
   it("contains a throwing replacement setup and deactivates the stale generation", async () => {
@@ -1179,6 +1251,15 @@ describe("applyPluginCss", () => {
     retainPluginCss("hello");
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     const first = links("hello")[0];
+    expect(first?.getAttribute("href")).toBe(
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
+    );
+    prefetchPluginCss("/assets/prefetched.css");
+    expect(
+      document
+        .querySelector("link[data-bb-plugin-css-prefetch]")
+        ?.getAttribute("href"),
+    ).toBe(`/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}`);
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(links("hello")[0]).toBe(first);
 
@@ -1191,6 +1272,9 @@ describe("applyPluginCss", () => {
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(preloads("hello")).toHaveLength(1);
     expect(preloads("hello")[0]?.fetchPriority).toBe("low");
+    expect(preloads("hello")[0]?.getAttribute("href")).toBe(
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
+    );
     expect(links("hello")).toHaveLength(0);
 
     preloads("hello")[0]?.dispatchEvent(new Event("load"));
@@ -1269,17 +1353,19 @@ describe("applyPluginCss", () => {
 
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     const fresh = links("hello")[1];
-    expect(fresh?.getAttribute("href")).toBe("/assets/app.css?h=bbb");
+    expect(fresh?.getAttribute("href")).toBe(
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+    );
     releaseFirst();
     await vi.advanceTimersByTimeAsync(200);
     fresh?.dispatchEvent(new Event("load"));
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      "/assets/app.css?h=bbb",
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
     await vi.advanceTimersByTimeAsync(300);
     const releaseSecond = retainPluginCss("hello");
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      "/assets/app.css?h=bbb",
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
     expect(links("hello")[0]).toBe(fresh);
     expect(preloads("hello")).toHaveLength(0);
@@ -1298,25 +1384,31 @@ describe("applyPluginCss", () => {
 
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     const inflight = links("hello")[1];
-    expect(inflight?.getAttribute("href")).toBe("/assets/app.css?h=bbb");
+    expect(inflight?.getAttribute("href")).toBe(
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+    );
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     inflight?.dispatchEvent(new Event("load"));
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      "/assets/app.css?h=aaa",
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
 
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      "/assets/app.css?h=aaa",
-      "/assets/app.css?h=bbb",
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
     retainPluginCss("hello");
     expect(links("hello")).toHaveLength(2);
     links("hello")
-      .find((l) => l.getAttribute("href") === "/assets/app.css?h=bbb")
+      .find(
+        (l) =>
+          l.getAttribute("href") ===
+          `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      )
       ?.dispatchEvent(new Event("load"));
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      "/assets/app.css?h=bbb",
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -1352,14 +1444,14 @@ describe("applyPluginCss", () => {
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     expect(links("hello")).toHaveLength(0);
     expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
-      "/assets/app.css?h=bbb",
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
     expect(vi.getTimerCount()).toBe(0);
 
     await vi.advanceTimersByTimeAsync(1_500);
     expect(links("hello")).toHaveLength(0);
     expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
-      "/assets/app.css?h=bbb",
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
     ]);
   });
 

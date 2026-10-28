@@ -1,13 +1,9 @@
-import {
-  createAsyncTtlMemo,
-  type AsyncTtlMemo,
-} from "../lib/async-ttl-memo.js";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { createAsyncTtlMemo, type AsyncTtlMemo } from "@bb/async-cache";
+import { execHostFile } from "@bb/process-utils";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import { z } from "zod";
 
-const exec = promisify(execFile);
+const exec = execHostFile;
 
 const githubCredentialHelper =
   '!f() { test "$1" = get || exit 0; protocol=; host=; while IFS= read -r line && test -n "$line"; do case "$line" in protocol=*) protocol=${line#protocol=} ;; host=*) host=${line#host=} ;; esac; done; if test "$protocol" = https && test "$host" = github.com && test -n "$GH_TOKEN"; then printf "username=x-access-token\\npassword=%s\\n" "$GH_TOKEN"; fi; }; f';
@@ -19,7 +15,7 @@ const gitConfig = [
   ["url.https://github.com/.insteadOf", "ssh://git@github.com/"],
 ] as const;
 const identitySchema = z.object({
-  login: z.string().regex(/^[a-zA-Z0-9-]+$/u),
+  login: z.string().regex(/^[a-zA-Z0-9_-]+$/u),
   id: z.number().int().positive(),
   email: z.email().nullable(),
 });

@@ -307,15 +307,23 @@ export function registerSystemRoutes(
         : undefined;
     const updatedSettings = appSettingsSchema.parse({
       ...settings,
+      idleProviderSessionTimeoutMinutes:
+        settings.idleProviderSessionTimeoutMinutes === undefined
+          ? current.idleProviderSessionTimeoutMinutes
+          : settings.idleProviderSessionTimeoutMinutes,
       allowFastServiceTier:
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
-      showGitChanges: settings.showGitChanges ?? current.showGitChanges,
+      terminalCopyOnSelect:
+        settings.terminalCopyOnSelect ?? current.terminalCopyOnSelect,
       keepHistoryAfterContextClear:
         settings.keepHistoryAfterContextClear ??
         current.keepHistoryAfterContextClear,
+      summarizeShellCommands:
+        settings.summarizeShellCommands ?? current.summarizeShellCommands,
       confirmThreadArchive:
         settings.confirmThreadArchive ?? current.confirmThreadArchive,
+      earlyAdopter: settings.earlyAdopter ?? current.earlyAdopter,
       onboardingCompletedAt:
         settings.onboardingCompletedAt === undefined
           ? current.onboardingCompletedAt

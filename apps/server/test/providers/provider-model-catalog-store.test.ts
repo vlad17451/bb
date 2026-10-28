@@ -1,7 +1,4 @@
-import {
-  getStoredProviderModelCatalog,
-  updateHost,
-} from "@bb/db";
+import { getStoredProviderModelCatalog, updateHost } from "@bb/db";
 import type { JsonValue, ProviderFork } from "@bb/domain";
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -36,6 +33,7 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { setServerMoveFrozen } from "../../src/services/server-move/freeze-state.js";
+import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 
 const BASE_NOW = 1_800_000_000_000;
 const SECOND = 1_000;
@@ -156,6 +154,62 @@ function seedEnvironmentPath(
 }
 
 describe("provider model catalog store", () => {
+  it("uses a session catalog immediately and pushes picker invalidation", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-session-catalog" });
+      await host.read("codex");
+      await settleTimers();
+      const pushes = capturePushes(harness);
+      await host.store.remember(harness.deps, {
+        hostId: host.hostId,
+        provider: requireRegistration(harness, "codex").info,
+        cwd: null,
+        models: modelList("new-session-model"),
+        selectedOnlyModels: modelList("hidden-session-model"),
+      });
+      const response = await host.read("codex");
+      expect(modelIds(response)).toEqual(["new-session-model"]);
+      expect(response.selectedOnlyModels.map((model) => model.model)).toEqual([
+        "hidden-session-model",
+      ]);
+      expect(host.listRequests()).toHaveLength(1);
+      await settleTimers();
+      expect(pushes).toEqual([host.hostId]);
+      const row = getStoredProviderModelCatalog(harness.db, {
+        hostId: host.hostId,
+        providerId: "codex",
+        scopeKey: "",
+      });
+      expect(JSON.parse(row?.modelsJson ?? "[]")).toMatchObject([
+        { model: "new-session-model" },
+      ]);
+    });
+  });
+
+  it("does not overwrite a session catalog with an older in-flight refresh", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, {
+        id: "host-session-catalog-race",
+      });
+      await host.read("codex");
+      const held = createDeferredPromise<HostRpcHandlerResult>();
+      host.setAnswer(() => held.promise);
+      host.clock.now += 10 * MINUTE;
+      await host.read("codex");
+      await vi.waitFor(() => expect(host.listRequests()).toHaveLength(2));
+      await host.store.remember(harness.deps, {
+        hostId: host.hostId,
+        provider: requireRegistration(harness, "codex").info,
+        cwd: null,
+        models: modelList("session-model"),
+        selectedOnlyModels: [],
+      });
+      held.resolve(catalogAnswer(modelList("old-discovery-model")));
+      await settleTimers();
+      expect(modelIds(await host.read("codex"))).toEqual(["session-model"]);
+    });
+  });
+
   it("keeps catalogs across a daemon reconnect, an unrelated registration and a capability-only re-registration", async () => {
     await withTestHarness(async (harness) => {
       const host = setupCatalogHost(harness, { id: "host-catalog-identity" });
@@ -218,6 +272,71 @@ describe("provider model catalog store", () => {
       });
       expect(modelIds(response)).toEqual([]);
       expect(host.listRequests()).toHaveLength(2);
+    });
+  });
+
+  it("lists models with the provider's plugin environment and refetches when that environment changes", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-catalog-env" });
+      const contexts: unknown[] = [];
+      let poolToken: string | null = "token-a";
+      setPluginAgentContributions({
+        listSkillRootContributions: () => [],
+        listAgentTools: () => [],
+        listInstructionContributions: () => [],
+        findAgentTool: () => undefined,
+        resolveMention: async () => ({ ok: false, error: "unused" }),
+        invokeAgentTool: async () => ({ success: false, contentItems: [] }),
+        resolveProviderEnv: async ({ providerId, context }) => {
+          contexts.push(context);
+          return {
+            entries:
+              providerId !== "codex" || poolToken === null
+                ? []
+                : [
+                    {
+                      name: "CODEX_OPENAI_BASE_URL",
+                      value: { serverPath: "/pool/v1" },
+                      source: { plugin: "account-pool" },
+                      reason: "pooled",
+                    },
+                    {
+                      name: "CODEX_POOL_AUTH_TOKEN",
+                      value: poolToken,
+                      source: { plugin: "account-pool" },
+                      reason: "pooled",
+                    },
+                  ],
+          };
+        },
+      });
+      try {
+        await host.read("codex");
+        await host.read("codex");
+        poolToken = "token-b";
+        await host.read("codex");
+        poolToken = null;
+        await host.read("codex");
+
+        expect(contexts[0]).toEqual({
+          threadId: null,
+          projectId: null,
+          hostId: host.hostId,
+        });
+        expect(
+          host
+            .listRequests("codex")
+            .map((command) =>
+              command.contributedEnv.map((entry) => entry.value),
+            ),
+        ).toEqual([
+          [{ serverPath: "/pool/v1" }, "token-a"],
+          [{ serverPath: "/pool/v1" }, "token-b"],
+          [],
+        ]);
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
     });
   });
 

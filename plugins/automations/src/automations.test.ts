@@ -38,7 +38,6 @@ import {
   validateOnceDefinition,
 } from "./schedule-helpers.js";
 import {
-  bbBinaryCandidates,
   executeStoredScript,
   isWakeAgentSuppressed,
   mapScriptResultToRun,
@@ -1775,7 +1774,7 @@ describe("automation CLI --script-file", () => {
       expect(created.stdout).toContain(`Copied ${sourcePath}`);
       expect(created.stdout).toContain(`to ${storedPath}`);
       expect(created.stdout).toContain(
-        `bb automation update ${automationId} --project proj_test --script-file ${pastedShellArg(sourcePath)} --interpreter bash --working-directory project --timeout 120000`,
+        `bb automation update ${automationId} --project proj_test --script-file ${pastedShellArg(sourcePath)}\n`,
       );
       expect(created.stdout).toContain("Working dir: /server/project");
 
@@ -1899,7 +1898,7 @@ describe("automation CLI --script-file", () => {
         `Copied ${sourcePath} (host host_laptop)`,
       );
       expect(inThread.stdout).toContain(
-        `--script-file ${pastedShellArg(sourcePath)} --host host_laptop --interpreter bash --working-directory project`,
+        `--script-file ${pastedShellArg(sourcePath)} --host host_laptop\n`,
       );
 
       const byName = await t.cli.run(
@@ -1964,10 +1963,10 @@ describe("automation CLI --script-file", () => {
     }
   });
 
-  it("prints a refresh command that keeps script settings and quotes the path", async () => {
+  it("prints a refresh command that quotes the path and keeps script settings", async () => {
     const t = await setup();
-    const sourcePath = join(t.srcDir, "my check $(id).py");
-    await writeFile(sourcePath, "print('hi')\n");
+    const sourcePath = join(t.srcDir, "my check $(id).sh");
+    await writeFile(sourcePath, "echo one\n");
     try {
       const created = await t.cli.run(
         [
@@ -1981,18 +1980,45 @@ describe("automation CLI --script-file", () => {
           "--script-file",
           sourcePath,
           "--interpreter",
-          "python3",
+          "sh",
           "--timeout",
           "5000",
           "--env-json",
-          '{"CHANNEL":"qa","MSG":"it\'s"}',
+          '{"CHANNEL":"qa"}',
+          "--working-directory",
+          "automation-storage",
         ],
         {},
       );
       expect(created.exitCode).toBe(0);
       const automationId = idFrom(created.stdout);
       expect(created.stdout).toContain(
-        `bb automation update ${automationId} --project proj_test --script-file '${sourcePath}' --interpreter python3 --working-directory project --timeout 5000 --env-json '{"CHANNEL":"qa","MSG":"it'\\''s"}'`,
+        `bb automation update ${automationId} --project proj_test --script-file '${sourcePath}'\n`,
+      );
+
+      await writeFile(sourcePath, "echo two\n");
+      const refreshed = await t.cli.run(
+        [
+          "update",
+          automationId,
+          "--project",
+          "proj_test",
+          "--script-file",
+          sourcePath,
+          "--json",
+        ],
+        {},
+      );
+      expect(refreshed.exitCode).toBe(0);
+      const { execution } = JSON.parse(refreshed.stdout ?? "");
+      expect(execution).toMatchObject({
+        interpreter: "sh",
+        timeoutMs: 5000,
+        env: { CHANNEL: "qa" },
+        workingDirectory: { type: "automation-storage" },
+      });
+      await expect(readFile(execution.storedScriptPath, "utf8")).resolves.toBe(
+        "echo two\n",
       );
     } finally {
       await t.cleanup();
@@ -2061,49 +2087,6 @@ describe("automation CLI --script-file", () => {
 });
 
 describe("bb CLI injection for script runs", () => {
-  it("prefers the env pointers over PATH and macOS install locations", () => {
-    expect(
-      bbBinaryCandidates({
-        BB_CLI: "/daemon/bundle/bb",
-        BB_CLI_DIR: "/other/dir",
-      })[0],
-    ).toBe("/daemon/bundle/bb");
-    expect(bbBinaryCandidates({ BB_CLI_DIR: "/daemon/bundle" })[0]).toBe(
-      join("/daemon/bundle", "bb"),
-    );
-  });
-
-  it("expands PATH itself so every candidate is absolute", () => {
-    expect(
-      bbBinaryCandidates({ PATH: ["/usr/bin", "/opt/tools"].join(delimiter) }),
-    ).toEqual([
-      join("/usr/bin", "bb"),
-      join("/opt/tools", "bb"),
-      "/opt/homebrew/bin/bb",
-      "/usr/local/bin/bb",
-    ]);
-    expect(
-      bbBinaryCandidates({ PATH: "/usr/bin" }).every((c) => isAbsolute(c)),
-    ).toBe(true);
-  });
-
-  it("drops entries that would resolve against the wrong directory", () => {
-    expect(
-      bbBinaryCandidates({ PATH: ["/usr/bin", "", "/bin"].join(delimiter) }),
-    ).toEqual([
-      join("/usr/bin", "bb"),
-      join("/bin", "bb"),
-      "/opt/homebrew/bin/bb",
-      "/usr/local/bin/bb",
-    ]);
-    expect(
-      bbBinaryCandidates({ BB_CLI: "  ", BB_CLI_DIR: "", PATH: "" }),
-    ).toEqual(["/opt/homebrew/bin/bb", "/usr/local/bin/bb"]);
-    expect(
-      bbBinaryCandidates({ BB_CLI: "./bb", BB_CLI_DIR: "rel/dir", PATH: "" }),
-    ).toEqual(["/opt/homebrew/bin/bb", "/usr/local/bin/bb"]);
-  });
-
   it("prepends bb's directory to PATH only when it is absolute", () => {
     expect(scriptPathEnv("/daemon/bundle/bb", "/usr/bin:/bin")).toBe(
       `${dirname("/daemon/bundle/bb")}${delimiter}/usr/bin:/bin`,

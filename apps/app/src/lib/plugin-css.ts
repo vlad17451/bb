@@ -1,7 +1,9 @@
+import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
 import { useInsertionEffect } from "react";
 
 const CSS_MARKER = "data-bb-plugin-css";
 const CSS_PRELOAD_MARKER = "data-bb-plugin-css-preload";
+const CSS_PREFETCH_MARKER = "data-bb-plugin-css-prefetch";
 const CSS_RELEASE_GRACE_MS = 1_500;
 
 interface PluginCssRecord {
@@ -150,6 +152,21 @@ function deactivateAfterFinalRelease(
   }, CSS_RELEASE_GRACE_MS);
 }
 
+function hostTailwindUrl(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}host-tailwind=${HOST_TAILWIND_VERSION}`;
+}
+
+export function prefetchPluginCss(url: string): void {
+  const link = document.createElement("link");
+  link.rel = "preload";
+  link.as = "style";
+  link.href = hostTailwindUrl(url);
+  link.setAttribute(CSS_PREFETCH_MARKER, "");
+  link.onload = () => link.remove();
+  link.onerror = () => link.remove();
+  document.head.appendChild(link);
+}
+
 export function applyPluginCss(pluginId: string, url: string | null): void {
   const record = recordFor(pluginId);
   if (url === null) {
@@ -163,6 +180,7 @@ export function applyPluginCss(pluginId: string, url: string | null): void {
     return;
   }
 
+  url = hostTailwindUrl(url);
   if (record.url === url) {
     if (record.consumers > 0) activateStylesheet(pluginId, record, url);
     else startPreload(pluginId, record, url);
@@ -213,7 +231,7 @@ export function resetPluginCssForTest(): void {
   }
   recordsByPluginId.clear();
   for (const link of document.head.querySelectorAll(
-    `link[${CSS_MARKER}], link[${CSS_PRELOAD_MARKER}]`,
+    `link[${CSS_MARKER}], link[${CSS_PRELOAD_MARKER}], link[${CSS_PREFETCH_MARKER}]`,
   )) {
     link.remove();
   }

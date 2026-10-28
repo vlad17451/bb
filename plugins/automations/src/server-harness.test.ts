@@ -439,6 +439,71 @@ describe("automations server plugin harness", () => {
       env: { CHANNEL: "qa" },
     });
 
+    const readScript = async () =>
+      automationDetailResponseSchema.parse(
+        await harness.callRpc("automations_get", {
+          projectId: PROJECT_ID,
+          automationId: created.id,
+        }),
+      ).execution;
+    const contentOnlyResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--script",
+      "echo refreshed",
+    ]);
+    expect(contentOnlyResult.exitCode).toBe(0);
+    expect(await readScript()).toMatchObject({
+      script: "echo refreshed",
+      interpreter: "bash",
+      workingDirectory: { type: "project" },
+      timeoutMs: 12_000,
+      env: { CHANNEL: "qa" },
+    });
+
+    const envOnlyResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--env-json",
+      '{"CHANNEL":"prod"}',
+    ]);
+    expect(envOnlyResult.exitCode).toBe(0);
+    expect(await readScript()).toMatchObject({
+      script: "echo refreshed",
+      timeoutMs: 12_000,
+      env: { CHANNEL: "prod" },
+    });
+
+    const clearEnvResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--env-json",
+      "{}",
+    ]);
+    expect(clearEnvResult.exitCode).toBe(0);
+    expect(await readScript()).not.toHaveProperty("env");
+
+    const mixedResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--model",
+      "gpt-5",
+      "--timeout",
+      "5000",
+    ]);
+    expect(mixedResult.exitCode).toBe(1);
+    expect(mixedResult.stderr).toContain(
+      "Cannot combine agent execution flags with script flags",
+    );
+
     const errorResult = await harness.runCli([
       "create",
       "--project",
@@ -631,6 +696,52 @@ describe("automations server plugin harness", () => {
         automationId: created.id,
       }),
     ).rejects.toThrow("Script file was not found");
+
+    await harness.dispose();
+  });
+
+  it("lists only automations that re-prompt a thread, not ones it created", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const targeted = await createAgentAutomation(harness, {
+      name: "Targets the thread",
+      targetThreadId: THREAD_ID,
+    });
+    await harness.callRpc("automations_create", {
+      projectId: PROJECT_ID,
+      name: "Created by the thread",
+      enabled: true,
+      trigger: oneShotTrigger(),
+      execution: agentExecution(),
+      origin: "agent",
+      createdByThreadId: THREAD_ID,
+    });
+
+    const listed = automationListResponseSchema.parse(
+      await harness.callRpc("automations_list", { targetThreadId: THREAD_ID }),
+    );
+    expect(listed.map((automation) => automation.id)).toEqual([targeted.id]);
+
+    const cliList = await harness.runCli([
+      "list",
+      "--target-thread",
+      THREAD_ID,
+      "--json",
+    ]);
+    expect(cliList.exitCode).toBe(0);
+    expect(
+      automationListResponseSchema
+        .parse(JSON.parse(cliList.stdout ?? ""))
+        .map((automation) => automation.id),
+    ).toEqual([targeted.id]);
+
+    const conflicting = await harness.runCli([
+      "list",
+      "--project",
+      PROJECT_ID,
+      "--target-thread",
+      THREAD_ID,
+    ]);
+    expect(conflicting.exitCode).not.toBe(0);
 
     await harness.dispose();
   });
@@ -1501,7 +1612,7 @@ describe("automations server plugin harness", () => {
     expect(disabled).toMatchObject({
       enabled: false,
       nextRunAt: null,
-      lastError: "target thread deleted",
+      lastError: "Target thread thr_target was deleted",
     });
 
     await harness.dispose();

@@ -4,9 +4,9 @@
 
 The first fix was a build-time patch of the minified web bundle in the published package. It worked, but it matched minified names, had to regenerate the `.br` and `.gz` copies the server prefers, and would only grow with every further change. A fork fixes things in source, builds them with the normal toolchain and keeps the changes reviewable.
 
-## Track npm releases, not `main`
+## Merge upstream main
 
-Upstream publishes `bb-app` from `main` on a nightly schedule and has no release tags. npm records the source commit (`gitHead`) of every version, so `fork` is based on that commit. Releases are tested more than an arbitrary `main` commit.
+The fork merges upstream `main` to keep the maintained diff small and adopt upstream features such as child notification policies. Fork versions retain the `<upstream version>-fork.<n>` format. npm's `gitHead` remains available when comparing a published release with its source.
 
 ## In-app updates off
 
@@ -42,7 +42,7 @@ Related upstream request: [get-bb/bb#5446](https://github.com/get-bb/bb/issues/5
 
 ## Restore upstream permission modes
 
-The fork's active `read-only` mode has been removed to reduce divergence from BB. The available modes are upstream's `accept-edits`, `auto` and `full`. Former `read-only` selections and saved execution settings resolve to `auto`; the historical aliases `readonly` and `workspace-write` retain upstream's `accept-edits` normalization. Recorded events remain readable without rewriting their history. The host-daemon protocol advances to 239 because its permission enums changed.
+The fork's active `read-only` mode has been removed to reduce divergence from BB. The available modes are upstream's `accept-edits`, `auto` and `full`. Former `read-only` selections and saved execution settings resolve to `auto`; the historical aliases `readonly` and `workspace-write` retain upstream's `accept-edits` normalization. Recorded events remain readable without rewriting their history. The removal advanced the host-daemon protocol to 239; subsequent upstream merges retain their newer protocol version.
 
 The follow-up migration converts stored host ceilings, project defaults and queued message modes. Tasks and Automations migrate their own saved settings; Workflows normalizes a retired origin mode when resuming. Review prompts still request read-only work, but that instruction is no longer a filesystem restriction.
 
@@ -56,7 +56,7 @@ The follow-up migration converts stored host ceilings, project defaults and queu
 
 The fork's `notifyParentOnTurnEnd` setting and `--no-notify-parent` flag have been removed. Child threads retain their normal parent and lifecycle links and report successful, failed and interrupted turns, questions and approvals using BB's existing behavior. Swarm helpers use these ordinary child threads and collect results as before.
 
-The current base remains BB 0.46.1. A later upstream release provides `parentNotifications` with `auto`, `stuck` and `off`; adopting that mechanism is a separate update rather than another fork implementation.
+Upstream provides `parentNotifications` with `auto`, `stuck` and `off`. Swarm helpers use `stuck`: successful results are collected explicitly while failures, interruptions, questions and approvals notify the parent.
 
 ## Fork migrations have a separate journal and ledger
 

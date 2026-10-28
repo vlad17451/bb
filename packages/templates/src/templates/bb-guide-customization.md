@@ -5,6 +5,7 @@ summary: Command reference for the bb app theme, server-backed settings, keyboar
 intent: Explain the CLI theme surface, server-backed app settings, and the remaining app-wide customization commands.
 editingNotes: Keep flags accurate against the CLI implementation. Theme details live in the bb-cli skill's references/theming.md. Bundled plugins document their settings in the plugins chapter and their skills, not here.
 ---
+
 Customization commands
 
 Bundled plugins such as Keep Awake, Concurrency limit, Thread list, and Push
@@ -19,18 +20,18 @@ Custom themes live on
 disk, one folder per theme, at <bb-data-dir>/theme/<name>/theme.css (the packaged
 app uses ~/.bb/theme/…). The folder name is the theme id.
 
-  bb theme list                  Built-in and custom themes; shows the active one
-  bb theme dir                   Print the custom-theme directory (where to author)
-  bb theme set <id> [--favicon-color <color>]
-                                 Activate a theme (built-ins: default, nord,
-                                 dracula, solarized, gruvbox, catppuccin),
-                                 preserving the favicon color unless the flag
-                                 supplies the complete selection
-  bb theme show [id] [--css]     Print the active palette, or resolve <id> without
-                                 activating it; --css dumps the CSS
-  bb theme reset                 Back to the default theme; preserve favicon color
-  bb theme favicon set <color>   Set favicon color; preserve the active theme
-  bb theme favicon reset         Reset favicon color; preserve the active theme
+bb theme list Built-in and custom themes; shows the active one
+bb theme dir Print the custom-theme directory (where to author)
+bb theme set <id> [--favicon-color <color>]
+Activate a theme (built-ins: default, nord,
+dracula, solarized, gruvbox, catppuccin),
+preserving the favicon color unless the flag
+supplies the complete selection
+bb theme show [id] [--css] Print the active palette, or resolve <id> without
+activating it; --css dumps the CSS
+bb theme reset Back to the default theme; preserve favicon color
+bb theme favicon set <color> Set favicon color; preserve the active theme
+bb theme favicon reset Reset favicon color; preserve the active theme
 
 To author a custom theme, run `bb theme dir`, write <that-dir>/<name>/theme.css,
 then `bb theme set <name>`. A name has at most 64 characters, starts with a
@@ -57,18 +58,18 @@ Server-backed settings
 
 Settings stored server-side apply to every window and survive restarts.
 
-  bb settings show
-  bb settings ai-services
-  bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id> [--plugin <plugin-id>]
-  bb settings ai-services test <thread-title|commit-message>
-  bb settings general <key> <value>
-  bb settings replay-onboarding
-  bb settings completed-turns [provider-id] [collapse|flat|default]
-  bb settings experiment <key> <value>
-  bb settings usage [--machine <id-or-name>] [--refresh]
-  bb settings cli-command [install|remove]
-  bb settings version [--force]
-  bb settings reload              Reload bb-managed configuration
+bb settings show
+bb settings ai-services
+bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id> [--plugin <plugin-id>]
+bb settings ai-services test <thread-title|commit-message>
+bb settings general <key> <value>
+bb settings replay-onboarding
+bb settings completed-turns [provider-id] [collapse|flat|default]
+bb settings experiment <key> <value>
+bb settings usage [--machine <id-or-name>] [--refresh]
+bb settings cli-command [install|remove]
+bb settings version [--force]
+bb settings reload Reload bb-managed configuration
 
 AI services: `bb settings ai-services` shows which AI service writes thread
 titles (and so branch names), commit messages, and voice transcripts, plus
@@ -97,19 +98,30 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   install with saved settings or work keeps false): when on, Enter steers a
   running thread and Command+Enter queues a follow-up; when off, those are
   reversed. Shift+Enter inserts a newline.
-- `showGitChanges` (default true; Settings → General → Show Git changes and
-  Commit button): false hides the git summary, expanded file list,
-  pull-request status and actions above the composer, and Commit action in the
-  thread header and overflow menu for every thread and connected client. Thread
-  relationships and workspace warnings remain visible.
+- Git changes above the composer, the Commit button (off by default) and the
+  pull request above the composer are plugin settings:
+  `bb plugin config bb--git set showGitChanges false`,
+  `bb plugin config bb--git set showCommitButton true` and
+  `bb plugin config bb--github-pr-status set showPullRequest false`.
 - `keepHistoryAfterContextClear` (default false; Settings → General → Show
   messages from before a context clear): true keeps a cleared thread's earlier
   messages above the `Context cleared` boundary in the timeline, outline, and
   message lookups. The next prompt still starts a fresh provider conversation,
   and the context meter still resets.
+- `summarizeShellCommands` (default true; Settings → General → Summarize shell
+  commands): false stops titling shell commands that read, list, or search files
+  with a summary such as `Searched for X`. Each command row then shows its
+  command and expands to the command and its output.
 - `confirmThreadArchive` (default true): set false to archive parent and child
   threads in the app without the confirmation popup; the toast still offers
   Undo. CLI and SDK archive calls are always non-interactive.
+- `terminalCopyOnSelect` (default true; Settings → General → Terminals → Copy
+  on select) copies completed terminal selections exactly and shows "Selection
+  copied". Text elsewhere in the app is unchanged. Set it with
+  `bb settings general terminalCopyOnSelect <true|false|on|off>` or SDK
+  `system.updateGeneralSettings`. Explicit Copy/Paste work when off. Supported
+  Linux browsers use native primary selection for middle-click paste,
+  independently of this preference, never the regular clipboard as a fallback.
 - `streamerMode` (default false) hides every `customModels` entry from
   `~/.bb/config.json` in all model lists (pickers, `bb provider models`, and
   the SDK) during a screen share. The entries stay in the config file; a
@@ -129,6 +141,7 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
 - `providerOrder` (default `[]`) is a JSON array of provider ids, and
   `defaultProviderId` (default `null`) names the default provider; `null`
   clears it.
+- `idleProviderSessionTimeoutMinutes` (default `30`; Settings → Providers → Configuration → Release idle agent sessions) sets how long an agent can sit idle after its last turn before every machine stops its provider process. Allowed values are `0` (ASAP), `5`, `10`, `30`, and `60`, for example `bb settings general idleProviderSessionTimeoutMinutes 5`. Machines check every five minutes, so release can take up to five minutes beyond the timeout. Changes apply live and on reconnect. Only restorable sessions without active or pending work are eligible; threads keep their history and resume on the next message. `bb thread stop` still releases a runtime manually. This is not a limit on loaded processes or memory. Read the value with `bb settings show`; SDK callers use `system.config()` and `system.updateGeneralSettings({ ...config.generalSettings, idleProviderSessionTimeoutMinutes: 5 })`.
 - `telemetryEnabled`: see Telemetry below.
 
 `bb settings replay-onboarding` clears `onboardingCompletedAt`, so the
@@ -161,13 +174,40 @@ existing threads too, including `bb thread log`. Settings → Providers has the
 same per-provider switch.
 
 Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
-experiment (Settings → Experiments). `changelogPreview` shows the latest
+experiment (Settings → Experiments). `applicationLinks` enables explicit
+Markdown links to apps such as Linear and Reflect, with confirmation on the
+viewing device unless that scheme was previously allowed. It defaults on for early adopters.
+Choose Always allow to save an approval on that device. Settings → General →
+Application link approvals can revoke one or all approvals. All clients store
+approvals locally for the current BB site and device profile. They do not sync
+across devices or server addresses. The Plugin SDK can list and revoke the
+viewing client's approvals; there is no CLI command that reads or modifies a
+remote client's localStorage.
+`changelogPreview` shows the latest
 release notes as a dismissible card on Settings → Updates. Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
 `timelinePush` sends an open thread's timeline updates over the live
 connection as row deltas instead of reloading the latest window after each
-update.
+update. `compactExpiredCache` offers a Compact chip in the composer when an idle
+thread's prompt cache has expired and its context holds at least 100k tokens;
+see `bb guide thread-messaging` for `--compact-first`.
+`sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
+Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
+still opens a thread in a split.
+`threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
+a line under each thread title where plugins show details such as the pull
+request number.
+`unreadDividerAtAnswer` places the NEW divider of an unread thread before the
+final assistant message of a turn that finished while you were away, instead of
+before its first tool call. It defaults on for early adopters.
+`websocketCompression` compresses large realtime messages (such as timeline
+pushes) on the app's live connection; it applies when the app reconnects.
+`bb settings general earlyAdopter on` (Settings → Experiments → Become an early
+adopter) turns on the experiments marked Early adopter, currently
+`applicationLinks`, `timelinePush`, `compactExpiredCache`, `sidebarMultiSelect`,
+`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set yourself keeps
+your value.
 
 Launcher settings
 
@@ -195,22 +235,27 @@ accelerators. Reset removes an override and returns to bb's current default;
 `disabled` explicitly unbinds a command. `Mod` means Command on macOS and
 Control on Windows/Linux. The complete default table is in docs/configuration.md.
 
-  bb settings keyboard list
-  bb settings keyboard hints <true|false>
-  bb settings keyboard set <command> <shortcut|disabled> [--platform mac|windows|linux]
-  bb settings keyboard reset [command] [--platform mac|windows|linux]
+bb settings keyboard list
+bb settings keyboard hints <true|false>
+bb settings keyboard set <command> <shortcut|disabled> [--platform mac|windows|linux]
+bb settings keyboard reset [command] [--platform mac|windows|linux]
 
 `keyboard list` prints core command ids with their effective bindings, plus
 every saved override; examples include `panel.previousTab` / `panel.nextTab`,
 `pane.focus.left|right|up|down`, `pane.maximize.toggle`, and the initially
-unbound `panel.fullScreen.toggle`. `hints` (default true) shows or hides the
-delayed shortcut badges shown while holding the modifier key; shortcuts work
-either way.
+unbound `panel.fullScreen.toggle`. `terminal.find` applies while a terminal has
+focus: `Cmd+F` on macOS and `Ctrl+Shift+F` elsewhere, so Ctrl+letter keys keep
+reaching the shell. `hints` (default true) shows or hides the delayed shortcut
+badges shown while holding the modifier key; shortcuts work either way.
 
 `history.back` / `history.forward` (`Mod+[` / `Mod+]`) follow the pages opened
 in the current window, like the sidebar arrows. `thread.previous` /
 `thread.next` follow sidebar order instead: `Mod+Shift+[` / `Mod+Shift+]`
 on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
+
+`thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
+unbound and act on the focused pane's open thread; Mark read and Pin toggle
+like the matching thread menu item.
 
 An override can be scoped with `--platform`; without it, it applies on all
 platforms. A platform-specific override takes precedence over a general one,
@@ -233,10 +278,10 @@ Sidebar preferences
 every window, device, and the CLI. The same registry stores which thread Info
 panel sections are collapsed (`infoPanel.collapsedSections`).
 
-  bb settings ui list [--json]
-  bb settings ui get <key> [--json]
-  bb settings ui set <key> <value> [--json]
-  bb settings ui reset <key> [--json]
+bb settings ui list [--json]
+bb settings ui get <key> [--json]
+bb settings ui set <key> <value> [--json]
+bb settings ui reset <key> [--json]
 
 `list` prints every key with its value, revision, and a short description.
 `set` takes plain strings for enum and provider keys and JSON for lists and
@@ -254,11 +299,17 @@ layout (organization mode, sort, grouping, hidden and collapsed groups) and
 copies the legacy `sidebar.*` layout keys from here only once; change its
 layout with `bb thread-list prefs` (see `bb guide plugins`).
 
+The composer's input box is drawn by `composer.provider`, which defaults to
+`__automatic__`: the first composer plugin you installed, or the bundled
+Composer plugin (`bb--composer/composer`) when there is none. Pick one with
+`bb settings ui set composer.provider <plugin-id>/<slot-id>`, or reset to
+restore Automatic. With no composer plugin enabled, no composer is shown.
+
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
 destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
-destinations and Customize rail; Settings is at the bottom. New thread sits in
-the sidebar header and cannot be hidden. The list beside the rail swaps between
+destinations and Customize navigation; Settings is at the bottom. New thread sits in
+the sidebar header and cannot be hidden from the rail. The list beside the rail swaps between
 the thread list, Plugins, Skills, and Settings, and collapsing the sidebar
 hides that list and leaves the rail. Rail order and visibility are
 `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`. In the macOS
@@ -268,13 +319,34 @@ it. On narrow windows and phones the rail sits inside the drawer: Home,
 Plugins, Skills, and Settings swap the list beside it and leave the drawer
 open, and a plugin page closes it.
 
+The rail and the top list below are the two layouts of the bundled Navigation
+plugin, a built-in you can fork like the thread list.
+`sidebar.navigationProvider` picks what draws the navigation:
+`navigation/rail` (the rail above), `navigation/top-list` (labeled rows above
+the thread list), another navigation plugin as `<plugin-id>/<slot-id>`, or
+`__automatic__` (the default: the first navigation from another plugin, else
+`navigation/rail`). Pick one in Settings → Appearance → Navigation, or:
+
+bb settings ui set sidebar.navigationProvider navigation/top-list
+bb settings ui reset sidebar.navigationProvider
+
+The top list puts the visible destinations, New thread among them, and More
+above the thread list, moves Settings into the footer, and adds a Back to app
+row to the Settings, Plugins, and Skills lists. New thread can be reordered
+and hidden like any other row there. Collapsing hides the whole sidebar, and
+the macOS desktop app drops the separate title bar. A navigation plugin
+declares whether it draws a rail or a list, and gets the matching layout; a
+list navigation can also bring its own controls beside the sidebar toggle.
+The same order and visibility keys apply to every provider.
+
 Footer actions: `sidebar.footerOrder` and `sidebar.hiddenFooterItems` are
-string lists of `builtin:mobile`, `builtin:report-bug`, or
+string lists of `builtin:settings` (top list only), `builtin:mobile`,
+`builtin:report-bug`, or
 `plugin:<encoded pluginId>/<encoded registrationId>`. They survive plugin
 reloads and temporarily unavailable plugins; new items are visible by default.
 
-  bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'
-  bb settings ui reset sidebar.hiddenFooterItems
+bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'
+bb settings ui reset sidebar.hiddenFooterItems
 
 In the app, the sidebar footer's More menu holds hidden actions and actions
 that don't fit; Settings → Appearance → Sidebar footer, or right-clicking an
@@ -289,9 +361,9 @@ Sidebar width and open state are per window and stay local to the browser.
 
 Host files and voice transcription
 
-  bb file read|write|list|paths|mkdir|move|remove ...
-  bb voice transcribe <audio-file> [--type <mime>] [--prompt <context>]
-                                   --type defaults to audio/webm
+bb file read|write|list|paths|mkdir|move|remove ...
+bb voice transcribe <audio-file> [--type <mime>] [--prompt <context>]
+--type defaults to audio/webm
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. `bb file write`
@@ -356,3 +428,28 @@ change), then run `bb settings experiment performanceDiagnostics true|false`.
 Collection needs both; it adds overhead and writes CPU profiles every 30 seconds
 to `$BB_DATA_DIR/logs/performance/` (kept 12 hours), which contain local paths.
 Open a `.cpuprofile` in Chrome DevTools.
+
+Desktop Settings → Server → **Show This Mac** (or **Show This Computer** off macOS)
+defaults to checked and is disabled while This Mac/Computer is selected.
+Unchecking hides the built-in server from server choices
+while another server is active and alternatives exist. It stays listed when
+active or when it is the only choice. This setting does not stop the local
+runtime or change the active server.
+
+The desktop stores `showBuiltinServer: false` in `<userData>/server-target.json`;
+missing means shown, and saving the default omits the field. Other top-level
+metadata is preserved. This is a desktop-local preference, with no server
+settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
+may drop it on save; older strict readers can reject the whole file, so keep a
+backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+Outbound networking
+
+bb's own server, daemon, and worker processes trust OS-managed certificate
+authorities and enable Node's environment proxy support by default; terminals,
+provider CLIs, and agent shells keep the user's Node networking defaults. Configure `HTTP_PROXY`,
+`HTTPS_PROXY`, and `NO_PROXY` with `bb-app env set` or in the launch environment;
+include `localhost,127.0.0.1,::1` in `NO_PROXY`. `NODE_EXTRA_CA_CERTS` adds a PEM
+bundle. `NODE_USE_SYSTEM_CA=0` and `NODE_USE_ENV_PROXY=0` opt out of the defaults.
+Restart bb after changes. Proxy support requires Node 22.21+, 24.5+, or 26;
+custom socket/agent libraries, including daemon WebSockets, can still bypass it.

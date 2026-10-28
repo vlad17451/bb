@@ -220,21 +220,10 @@ This index lists every command path that the core CLI registers, including alias
 - `bb environment cleanup`
 - `bb environment show`
 - `bb environment get`
-- `bb environment status`
-- `bb environment branches`
 - `bb environment paths`
-- `bb environment diff`
-- `bb environment diff-files`
-- `bb environment diff-file`
-- `bb environment diff-patch`
 - `bb environment update`
 - `bb environment commit`
 - `bb environment archive-threads`
-- `bb environment pull-request`
-- `bb environment pull-request show`
-- `bb environment pull-request ready`
-- `bb environment pull-request draft`
-- `bb environment pull-request merge`
 
 ## file
 

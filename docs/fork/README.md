@@ -5,7 +5,7 @@ This is a personal fork of [get-bb/bb](https://github.com/get-bb/bb). It exists 
 ## Branches and versions
 
 - `main` mirrors upstream and is not used for our work.
-- `fork` holds our commits on top of the commit that npm records as `gitHead` for a published `bb-app` release (for example `411eac54ac16d0a3cb57d1de8396d37564884a73` for 0.46.1). Upstream has no release tags, so the npm metadata is the only exact link between a published version and its source.
+- `fork` carries our changes and merges upstream `main`. The current upstream base version is 0.48.0. npm metadata records `gitHead` when an exact published release commit is needed.
 - Versions are `<upstream version>-fork.<n>`.
 
 ## Releases

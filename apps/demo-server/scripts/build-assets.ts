@@ -31,8 +31,9 @@ const plugins: InstalledPlugin[] = [];
 const artifactMetaSchema = z.object({
   sdkMajor: z.number().int(),
   sdkVersion: z.string(),
+  runtimeSlots: z.array(z.string()),
 });
-for (const id of ["thread-list"]) {
+for (const id of ["navigation", "thread-list"]) {
   const source = new URL(
     `../../../plugins/${id}/.bundled-runtime/`,
     import.meta.url,
@@ -90,6 +91,7 @@ for (const id of ["thread-list"]) {
         sdkMajor: meta.sdkMajor,
         sdkVersion: meta.sdkVersion,
         compatible: true,
+        runtimeSlots: meta.runtimeSlots,
       },
     },
     logoUrl: null,

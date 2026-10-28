@@ -84,6 +84,18 @@ import {
   type McpForwardAuth,
 } from "./mcp-gate.js";
 import { readTunnelLiveness, type TunnelLiveness } from "./tunnel-liveness.js";
+import {
+  handleGatePresence,
+  handleGatePresenceBatch,
+  handleGateResolve,
+  handleGateResolveBatch,
+} from "./gate-api.js";
+import {
+  GATE_PRESENCE_BATCH_PATH,
+  GATE_PRESENCE_PATH,
+  GATE_RESOLVE_BATCH_PATH,
+  GATE_RESOLVE_PATH,
+} from "@bb/tunnel-contract/next";
 
 export { TunnelDO };
 
@@ -462,6 +474,23 @@ const gate = {
     const url = resolveConnectRequestUrl(request.url, request.headers, runtime);
     const host = resolveConnectRequestHost(request.headers, runtime);
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
+    if (
+      parsed === null ||
+      (parsed.target === null && RESERVED_HANDLES.has(parsed.handle))
+    ) {
+      if (url.pathname === GATE_RESOLVE_PATH) {
+        return handleGateResolve(request, env, ctx);
+      }
+      if (url.pathname === GATE_PRESENCE_PATH) {
+        return handleGatePresence(request, env);
+      }
+      if (url.pathname === GATE_RESOLVE_BATCH_PATH) {
+        return handleGateResolveBatch(request, env, ctx);
+      }
+      if (url.pathname === GATE_PRESENCE_BATCH_PATH) {
+        return handleGatePresenceBatch(request, env);
+      }
+    }
     if (parsed === null || parsed.target === null) {
       if (url.pathname === "/api/connect/servers") {
         return handleListAccountServers(request, env);
@@ -639,7 +668,7 @@ const gate = {
       if (isHostManagementMutation(request, url.pathname)) {
         return text("bb connect: machine cannot manage hosts\n", 403);
       }
-      ctx.waitUntil(markMachineSeen(verified.machineId, db));
+      ctx.waitUntil(markMachineSeen(verified, db));
       return responseForVisitor(
         await tunnelDo(
           requestForTunnelDo(request, null, "machine", verified.machineId),
@@ -828,7 +857,7 @@ export default {
       console.error("bb connect: request failed", {
         method: request.method,
         path: new URL(request.url).pathname,
-        error,
+        error: String(error),
       });
       return gateErrorResponse(request);
     }

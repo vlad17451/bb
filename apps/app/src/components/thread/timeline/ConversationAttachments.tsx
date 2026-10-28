@@ -1,17 +1,17 @@
+import { isVideoAttachment } from "@/lib/video-attachments";
+import { VideoThumbnail } from "@bb/shared-ui/video-thumbnail";
 import { useEffect, useState } from "react";
 import type { TimelineConversationAttachments } from "@bb/server-contract";
 import { fileNameFromPath } from "@bb/thread-view";
-import {
-  ImageLightbox,
-  getWrappedImageIndex,
-} from "../../ui/image-lightbox.js";
+import { ImageLightbox } from "../../ui/image-lightbox.js";
+import { getWrappedImageIndex } from "@bb/shared-ui/lib/image-preview";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   buildProjectAttachmentContentUrl,
   isAbsoluteLocalPath,
   isProjectAttachmentPath,
 } from "@/lib/file-content-urls";
-import { formatByteSize } from "@/lib/format-byte-size";
+import { formatByteSize } from "@bb/shared-ui/lib/format-byte-size";
 import { canSaveFileNatively, saveFile } from "@/lib/save-file";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
 import type {
@@ -20,6 +20,7 @@ import type {
 } from "./types.js";
 
 interface ConversationImageItem {
+  mediaType?: "image" | "video";
   alt: string;
   src: string;
 }
@@ -84,8 +85,25 @@ export function buildAttachmentItems({
     })),
   ];
 
+  const videoPaths = attachments.localFilePaths.filter((path) =>
+    isVideoAttachment({ path }),
+  );
+  imageItems.push(
+    ...videoPaths.map((path) => ({
+      mediaType: "video" as const,
+      alt:
+        attachments.localFileDetails.find((file) => file.path === path)?.name ??
+        fileNameFromPath(path),
+      src: resolveUserAttachmentImageSrc
+        ? resolveUserAttachmentImageSrc(path, projectId)
+        : (projectAttachmentHref({ path, projectId }) ?? path),
+    })),
+  );
+
   return {
-    filePaths: attachments.localFilePaths,
+    filePaths: attachments.localFilePaths.filter(
+      (path) => !isVideoAttachment({ path }),
+    ),
     fileDetails: attachments.localFileDetails,
     imageItems,
   };
@@ -136,18 +154,25 @@ export function ConversationAttachments({
                   : "border-border bg-surface-recessed",
               )}
               onClick={() => setExpandedImageIndex(index)}
-              title={imageItem.alt}
+              aria-label={imageItem.alt}
             >
-              <img
-                src={imageItem.src}
-                alt={imageItem.alt}
-                className={cn(
-                  "object-cover",
-                  align === "end" ? "h-20 max-w-36" : "h-16 w-24",
-                )}
-                loading="lazy"
-                decoding="async"
-              />
+              {imageItem.mediaType === "video" ? (
+                <VideoThumbnail
+                  src={imageItem.src}
+                  className={align === "end" ? "h-20 w-36" : "h-16 w-24"}
+                />
+              ) : (
+                <img
+                  src={imageItem.src}
+                  alt={imageItem.alt}
+                  className={cn(
+                    "object-cover",
+                    align === "end" ? "h-20 max-w-36" : "h-16 w-24",
+                  )}
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
             </button>
           ))}
         </div>
@@ -247,7 +272,8 @@ export function ConversationAttachments({
         </div>
       ) : null}
       <ImageLightbox
-        title="Attached image preview"
+        title="Attached media preview"
+        mediaType={currentImageItem?.mediaType}
         imageSrc={currentImageItem?.src ?? null}
         imageAlt={currentImageItem?.alt ?? "Attached image"}
         hasMultipleImages={hasMultipleImages}

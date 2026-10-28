@@ -24,6 +24,7 @@ import {
   getHost,
   getLatestThreadInterruptedReason,
   getThread,
+  hasStoredTerminalClientTurnRequestEvent,
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
@@ -105,6 +106,7 @@ import { isParentNotifiableChildThread } from "./thread-parent.js";
 import {
   clearThreadProvisionSchedule,
   getThreadProvisionContext,
+  readDispatchedThreadStartFork,
 } from "./thread-startup-store.js";
 import { cancelAbandonedProviderCreations } from "./thread-environment-providers.js";
 import { scheduleThreadProvisioningAdvance } from "./thread-provisioning.js";
@@ -686,31 +688,12 @@ function hasTerminalClientTurnRequestEvent(
   deps: ThreadCommandResultSettlementDeps,
   command: ThreadFailureCommand,
 ): boolean {
-  if (command.type !== "turn.submit") {
-    return false;
-  }
-
   return (
-    deps.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, command.threadId),
-          or(
-            and(
-              eq(events.type, "turn/input/accepted"),
-              sql`json_extract(${events.data}, '$.clientRequestId') = ${command.requestId}`,
-            ),
-            and(
-              eq(events.type, "client/turn/rejected"),
-              sql`json_extract(${events.data}, '$.requestId') = ${command.requestId}`,
-            ),
-          ),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
+    command.type === "turn.submit" &&
+    hasStoredTerminalClientTurnRequestEvent(deps.db, {
+      requestId: command.requestId,
+      threadId: command.threadId,
+    })
   );
 }
 
@@ -873,7 +856,7 @@ function settleThreadCommandFailure(
   if (outcome.applied) {
     args.deps.hub.notifyThread(thread.id, ["status-changed"]);
   }
-  if (isParentNotifiableChildThread(thread)) {
+  if (isParentNotifiableChildThread(thread, "failed")) {
     const parentThreadId = thread.parentThreadId;
     postCommitActions.push({
       run: (deps) =>
@@ -991,7 +974,7 @@ export function ensureThreadCanStartRequest(thread: Thread): void {
 
 export async function prepareReadyThreadTurnCommand(
   deps: LoggedWorkSessionDeps,
-  args: ThreadStartCommandArgs,
+  args: Omit<ThreadStartCommandArgs, "fork">,
 ): Promise<PreparedReadyThreadTurnCommand> {
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
@@ -1023,7 +1006,10 @@ export async function prepareReadyThreadTurnCommand(
   }
 
   return {
-    command: await buildThreadStartCommand(deps, args),
+    command: await buildThreadStartCommand(deps, {
+      ...args,
+      fork: readDispatchedThreadStartFork(deps.db, args.thread.id),
+    }),
     mode: "thread.start",
   };
 }
@@ -1896,7 +1882,7 @@ function interruptActiveThreads(
     if (
       result.interruptedTurnId !== null &&
       thread &&
-      isParentNotifiableChildThread(thread)
+      isParentNotifiableChildThread(thread, "interrupted")
     ) {
       void queueChildThreadTurnNotificationBestEffort(deps, {
         childThread: thread,

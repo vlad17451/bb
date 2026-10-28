@@ -1,5 +1,5 @@
-import { eq, inArray } from "drizzle-orm";
 import {
+  GIT_PLUGIN_ID,
   aiServiceSelectionSchema,
   AI_TASKS,
   appKeybindingOverridesSchema,
@@ -14,6 +14,7 @@ import {
   type AppKeybindingOverrides,
   type AppSettings,
 } from "@bb/domain";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { appSettingsValues } from "../schema.js";
 
@@ -25,6 +26,7 @@ const AI_SERVICE_SELECTIONS_KEY = "aiServiceSelections";
 const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
 const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
+const INSTALL_TURN_NUMBER_KEY = "installTurnNumber";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -98,6 +100,45 @@ export function setAppSettings(db: DbConnection, settings: AppSettings): void {
   });
 }
 
+const RETIRED_KEYBOARD_COMMAND_IDS: ReadonlyMap<string, string> = new Map([
+  ["diff.toggle", `plugin:${GIT_PLUGIN_ID}/toggle-diff`],
+]);
+
+function overrideSlot(entry: unknown): string | null {
+  if (
+    typeof entry !== "object" ||
+    entry === null ||
+    !("command" in entry) ||
+    typeof entry.command !== "string"
+  ) {
+    return null;
+  }
+  const platform =
+    "platform" in entry && typeof entry.platform === "string"
+      ? entry.platform
+      : "all";
+  return `${entry.command}:${platform}`;
+}
+
+function migrateRetiredKeyboardCommands(stored: unknown): unknown {
+  if (!Array.isArray(stored)) return stored;
+  const explicitSlots = new Set(stored.map(overrideSlot));
+  return stored.flatMap((entry: unknown) => {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !("command" in entry) ||
+      typeof entry.command !== "string"
+    ) {
+      return [entry];
+    }
+    const replacement = RETIRED_KEYBOARD_COMMAND_IDS.get(entry.command);
+    if (replacement === undefined) return [entry];
+    const migrated = { ...entry, command: replacement };
+    return explicitSlots.has(overrideSlot(migrated)) ? [] : [migrated];
+  });
+}
+
 export function getAppKeybindingOverrides(
   db: DbConnection,
 ): AppKeybindingOverrides {
@@ -110,7 +151,9 @@ export function getAppKeybindingOverrides(
   if (row === undefined) {
     return [];
   }
-  return appKeybindingOverridesSchema.parse(parseStoredValue(row.value));
+  return appKeybindingOverridesSchema.parse(
+    migrateRetiredKeyboardCommands(parseStoredValue(row.value)),
+  );
 }
 
 export function setAppKeybindingOverrides(
@@ -145,6 +188,15 @@ export function setAiServiceSelection(
   const selections = { ...getAiServiceSelections(db), [task]: selection };
   writeValue(db, AI_SERVICE_SELECTIONS_KEY, selections, Date.now());
   return selections;
+}
+
+export function getEarlyAdopter(db: DbConnection): boolean {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, appSettingsKeySchema.enum.earlyAdopter))
+    .get();
+  return row !== undefined && parseStoredValue(row.value) === true;
 }
 
 export function getPluginSafeMode(db: DbConnection): boolean {
@@ -230,4 +282,20 @@ export function forgetPluginProviders(
       .where(eq(appSettingsValues.key, pluginProviderCatalogKey(pluginId)))
       .run();
   });
+}
+
+export function claimInstallTurnNumber(db: DbQueryConnection, now: number): number {
+  const row = db
+    .insert(appSettingsValues)
+    .values({ key: INSTALL_TURN_NUMBER_KEY, value: "1", updatedAt: now })
+    .onConflictDoUpdate({
+      target: appSettingsValues.key,
+      set: {
+        value: sql`CAST(CAST(${appSettingsValues.value} AS INTEGER) + 1 AS TEXT)`,
+        updatedAt: now,
+      },
+    })
+    .returning({ value: appSettingsValues.value })
+    .get();
+  return Number(row!.value);
 }
