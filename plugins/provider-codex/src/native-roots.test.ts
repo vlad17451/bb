@@ -43,10 +43,9 @@ async function writeFileEnsuringDir(
 async function writePluginManifest(
   pluginRoot: string,
   manifest: unknown,
-  manifestDir: ".codex-plugin" | ".claude-plugin" = ".codex-plugin",
 ): Promise<void> {
   await writeFileEnsuringDir(
-    path.join(pluginRoot, manifestDir, "plugin.json"),
+    path.join(pluginRoot, ".codex-plugin", "plugin.json"),
     JSON.stringify(manifest, null, 2),
   );
 }
@@ -243,64 +242,6 @@ describe("resolveCodexNativeRoots", () => {
         path: path.join(pluginRoot, "skills"),
         origin: "user",
         namePrefix: "dir-named:",
-        shape: "skills",
-      },
-    ]);
-  });
-
-  it("reads a .claude-plugin manifest when the plugin has no .codex-plugin one", async () => {
-    const codexOnlyRoot = cachedPluginRoot("market", "codex-only", "1.0.0");
-    await writePluginManifest(codexOnlyRoot, {
-      name: "codex-only-name",
-      skills: ["codex-skills"],
-    });
-    await mkdir(path.join(codexOnlyRoot, "codex-skills"), { recursive: true });
-
-    const claudeOnlyRoot = cachedPluginRoot("market", "claude-only", "1.0.0");
-    await writePluginManifest(
-      claudeOnlyRoot,
-      { name: "claude-only-name", skills: ["./claude-skills"] },
-      ".claude-plugin",
-    );
-    await mkdir(path.join(claudeOnlyRoot, "claude-skills"), {
-      recursive: true,
-    });
-
-    const bothRoot = cachedPluginRoot("market", "both", "1.0.0");
-    await writePluginManifest(bothRoot, {
-      name: "both-codex-name",
-      skills: ["from-codex-manifest"],
-    });
-    await writePluginManifest(
-      bothRoot,
-      { name: "both-claude-name", skills: ["from-claude-manifest"] },
-      ".claude-plugin",
-    );
-    for (const directory of ["from-codex-manifest", "from-claude-manifest"]) {
-      await mkdir(path.join(bothRoot, directory), { recursive: true });
-    }
-
-    const neitherRoot = cachedPluginRoot("market", "neither", "1.0.0");
-    await mkdir(path.join(neitherRoot, "skills"), { recursive: true });
-
-    const skills = await resolveSkills();
-    expect(skills.slice(2)).toEqual([
-      {
-        path: path.join(bothRoot, "from-codex-manifest"),
-        origin: "user",
-        namePrefix: "both-codex-name:",
-        shape: "skills",
-      },
-      {
-        path: path.join(claudeOnlyRoot, "claude-skills"),
-        origin: "user",
-        namePrefix: "claude-only-name:",
-        shape: "skills",
-      },
-      {
-        path: path.join(codexOnlyRoot, "codex-skills"),
-        origin: "user",
-        namePrefix: "codex-only-name:",
         shape: "skills",
       },
     ]);

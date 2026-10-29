@@ -31,7 +31,7 @@ export interface ResolveCodexNativeRootsArgs {
   env: Readonly<Record<string, string | undefined>>;
 }
 
-const CODEX_PLUGIN_MANIFEST_DIR_NAMES = [".codex-plugin", ".claude-plugin"];
+const CODEX_PLUGIN_DIR_NAME = ".codex-plugin";
 const CODEX_PLUGIN_MANIFEST_FILE_NAME = "plugin.json";
 const CODEX_CONFIG_FILE_NAME = "config.toml";
 
@@ -148,41 +148,36 @@ async function readCodexEnabledPluginSettings(
   }
 }
 
-async function isFile(filePath: string): Promise<boolean> {
+async function directoryHasCodexPluginManifest(
+  directoryPath: string,
+): Promise<boolean> {
   try {
-    const stat = await fs.lstat(filePath);
+    const stat = await fs.lstat(
+      path.join(
+        directoryPath,
+        CODEX_PLUGIN_DIR_NAME,
+        CODEX_PLUGIN_MANIFEST_FILE_NAME,
+      ),
+    );
     return stat.isFile();
   } catch {
     return false;
   }
 }
 
-async function resolveCodexPluginManifestPath(
-  pluginRootPath: string,
-): Promise<string | null> {
-  for (const manifestDirName of CODEX_PLUGIN_MANIFEST_DIR_NAMES) {
-    const manifestPath = path.join(
-      pluginRootPath,
-      manifestDirName,
-      CODEX_PLUGIN_MANIFEST_FILE_NAME,
-    );
-    if (await isFile(manifestPath)) {
-      return manifestPath;
-    }
-  }
-  return null;
-}
-
 async function readCodexPluginManifest(
   pluginRootPath: string,
 ): Promise<CodexPluginManifest | null> {
-  const manifestPath = await resolveCodexPluginManifestPath(pluginRootPath);
-  if (manifestPath === null) {
-    return null;
-  }
   let content: string;
   try {
-    content = await fs.readFile(manifestPath, "utf8");
+    content = await fs.readFile(
+      path.join(
+        pluginRootPath,
+        CODEX_PLUGIN_DIR_NAME,
+        CODEX_PLUGIN_MANIFEST_FILE_NAME,
+      ),
+      "utf8",
+    );
   } catch {
     return null;
   }
@@ -199,7 +194,7 @@ async function readCodexPluginManifest(
 async function statCodexPluginCacheCandidate(
   rootPath: string,
 ): Promise<PluginCacheCandidate | null> {
-  if ((await resolveCodexPluginManifestPath(rootPath)) === null) {
+  if (!(await directoryHasCodexPluginManifest(rootPath))) {
     return null;
   }
   try {
